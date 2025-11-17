@@ -226,6 +226,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 		"f: Port forward",
 		"x: Stop forwarding",
 		"c: Copy SSH command",
+		"h: Copy Host",
 		"g: Ping server",
 		"r: Refresh list",
 		"a: Add new server",
