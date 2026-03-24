@@ -23,11 +23,10 @@ import (
 )
 
 const (
-	MaxBackups         = 10
-	TempSuffix         = ".tmp"
-	BackupSuffix       = "lazyssh.backup"
-	SSHConfigPerms     = 0o600
-	OriginalBackupName = "config.original.backup"
+	MaxBackups     = 10
+	TempSuffix     = ".tmp"
+	BackupSuffix   = "lazyssh.backup"
+	SSHConfigPerms = 0o600
 )
 
 // filterServers filters servers based on the query string.

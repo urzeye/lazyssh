@@ -25,6 +25,7 @@ type FileSystem interface {
 	Create(name string) (io.WriteCloser, error)
 	Stat(name string) (os.FileInfo, error)
 	IsNotExist(err error) bool
+	MkdirAll(path string, perm os.FileMode) error
 	Remove(file string) error
 	Rename(file string, path string) error
 	Chmod(path string, perms os.FileMode) error
@@ -51,6 +52,10 @@ func (fs DefaultFileSystem) Stat(name string) (os.FileInfo, error) {
 
 func (fs DefaultFileSystem) IsNotExist(err error) bool {
 	return os.IsNotExist(err)
+}
+
+func (fs DefaultFileSystem) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
 }
 
 func (fs DefaultFileSystem) Remove(file string) error {

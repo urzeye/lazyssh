@@ -26,9 +26,11 @@ import (
 )
 
 // loadAllServers loads servers from the main SSH config and all recursively
-// included config files. The main config always wins when aliases collide.
+// included config files. The root config always wins when aliases collide,
+// while mutability is determined by the configured write target.
 func (r *Repository) loadAllServers() ([]domain.Server, error) {
-	mainPath := normalizeConfigPath(r.configPath)
+	mainPath := normalizeConfigPath(r.readConfigPath)
+	writablePath := normalizeConfigPath(r.writeConfigPath)
 
 	if _, err := r.fileSystem.Stat(mainPath); err != nil {
 		if r.fileSystem.IsNotExist(err) {
@@ -59,7 +61,7 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 			continue
 		}
 
-		current := r.toDomainServersFromConfig(cfg, path, index != 0)
+		current := r.toDomainServersFromConfig(cfg, path, path != writablePath)
 		for _, server := range current {
 			if aliasesAlreadySeen(seenAliases, server.Aliases) {
 				continue

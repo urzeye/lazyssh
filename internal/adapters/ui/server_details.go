@@ -233,7 +233,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 		"p: Pin/Unpin",
 	}
 	if server.Readonly {
-		commands = append(commands, "Included entries are read-only here")
+		commands = append(commands, "Read-only entries are managed in another file")
 	} else {
 		commands = append(commands, "e: Edit entry", "t: Edit tags", "d: Delete entry")
 	}

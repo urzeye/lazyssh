@@ -26,22 +26,22 @@ import (
 
 // createBackup creates a timestamped backup of the current config file
 func (r *Repository) createBackup() error {
-	if _, err := r.fileSystem.Stat(r.configPath); os.IsNotExist(err) {
+	if _, err := r.fileSystem.Stat(r.writeConfigPath); r.fileSystem.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to check if config file exists: %w", err)
 	}
 
 	timestamp := time.Now().UnixMilli()
-	backupPath := fmt.Sprintf("%s-%d-%s", r.configPath, timestamp, BackupSuffix)
+	backupPath := fmt.Sprintf("%s-%d-%s", r.writeConfigPath, timestamp, BackupSuffix)
 
-	if err := r.copyFile(r.configPath, backupPath); err != nil {
+	if err := r.copyFile(r.writeConfigPath, backupPath); err != nil {
 		return fmt.Errorf("failed to copy config to backup: %w", err)
 	}
 
 	r.logger.Infof("Created backup: %s", backupPath)
 
-	configDir := filepath.Dir(r.configPath)
+	configDir := filepath.Dir(r.writeConfigPath)
 
 	backupFiles, err := r.findBackupFiles(configDir)
 	if err != nil {
@@ -110,10 +110,11 @@ func (r *Repository) findBackupFiles(dir string) ([]os.FileInfo, error) {
 	}
 
 	var backupFiles []os.FileInfo
+	backupPrefix := filepath.Base(r.writeConfigPath) + "-"
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasSuffix(name, BackupSuffix) {
+		if strings.HasPrefix(name, backupPrefix) && strings.HasSuffix(name, BackupSuffix) {
 			info, err := entry.Info()
 			if err != nil {
 				r.logger.Warnf("failed to get info for backup file %s: %v", name, err)
@@ -129,14 +130,14 @@ func (r *Repository) findBackupFiles(dir string) ([]os.FileInfo, error) {
 // createOriginalBackupIfNeeded creates a one-time original backup of the current SSH config.
 func (r *Repository) createOriginalBackupIfNeeded() error {
 	// If no SSH config file, nothing to do.
-	if _, err := r.fileSystem.Stat(r.configPath); os.IsNotExist(err) {
+	if _, err := r.fileSystem.Stat(r.writeConfigPath); r.fileSystem.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to check if config file exists: %w", err)
 	}
 
-	configDir := filepath.Dir(r.configPath)
-	originalBackupPath := filepath.Join(configDir, OriginalBackupName)
+	configDir := filepath.Dir(r.writeConfigPath)
+	originalBackupPath := filepath.Join(configDir, r.originalBackupName())
 
 	if _, err := r.fileSystem.Stat(originalBackupPath); err == nil {
 		return nil
@@ -144,10 +145,14 @@ func (r *Repository) createOriginalBackupIfNeeded() error {
 		return fmt.Errorf("failed to check if original backup exists: %w", err)
 	}
 
-	if err := r.copyFile(r.configPath, originalBackupPath); err != nil {
+	if err := r.copyFile(r.writeConfigPath, originalBackupPath); err != nil {
 		return fmt.Errorf("failed to create original backup: %w", err)
 	}
 
 	r.logger.Infof("Created original backup: %s", originalBackupPath)
 	return nil
+}
+
+func (r *Repository) originalBackupName() string {
+	return fmt.Sprintf("%s.original.backup", filepath.Base(r.writeConfigPath))
 }

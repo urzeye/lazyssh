@@ -28,9 +28,11 @@ import (
 )
 
 var (
-	version       = "develop"
-	gitCommit     = "unknown"
-	sshConfigFile string
+	version              = "develop"
+	gitCommit            = "unknown"
+	sshConfigFile        string
+	managedMode          bool
+	managedSSHConfigFile string
 )
 
 func main() {
@@ -52,9 +54,15 @@ func main() {
 	if sshConfigFile == "" {
 		sshConfigFile = filepath.Join(home, ".ssh", "config")
 	}
+	if managedSSHConfigFile != "" {
+		managedMode = true
+	}
+	if managedMode && managedSSHConfigFile == "" {
+		managedSSHConfigFile = filepath.Join(home, ".ssh", "config.local")
+	}
 	metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
 
-	serverRepo := ssh_config_file.NewRepository(log, sshConfigFile, metaDataFile)
+	serverRepo := ssh_config_file.NewRepositoryWithWritePath(log, sshConfigFile, managedSSHConfigFile, metaDataFile)
 	serverService := services.NewServerService(log, serverRepo)
 	tui := ui.NewTUI(log, serverService, version, gitCommit)
 
@@ -66,6 +74,8 @@ func main() {
 		},
 	}
 	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", "path to ssh config file (default: ~/.ssh/config)")
+	rootCmd.PersistentFlags().BoolVar(&managedMode, "managed-mode", false, "read from the root ssh config but write changes to a managed ssh config file")
+	rootCmd.PersistentFlags().StringVar(&managedSSHConfigFile, "managed-sshconfig", "", "path to the writable managed ssh config file (default: ~/.ssh/config.local when managed mode is enabled)")
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {

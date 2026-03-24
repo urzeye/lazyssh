@@ -26,7 +26,11 @@ import (
 // loadConfig reads and parses the SSH config file.
 // If the file does not exist, it returns an empty config without error to support first-run behavior.
 func (r *Repository) loadConfig() (*ssh_config.Config, error) {
-	file, err := r.fileSystem.Open(r.configPath)
+	return r.loadConfigAt(r.writeConfigPath)
+}
+
+func (r *Repository) loadConfigAt(path string) (*ssh_config.Config, error) {
+	file, err := r.fileSystem.Open(path)
 	if err != nil {
 		if r.fileSystem.IsNotExist(err) {
 			return &ssh_config.Config{Hosts: []*ssh_config.Host{}}, nil
@@ -49,7 +53,10 @@ func (r *Repository) loadConfig() (*ssh_config.Config, error) {
 
 // saveConfig writes the SSH config back to the file with atomic operations and backup management.
 func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
-	configDir := filepath.Dir(r.configPath)
+	configDir := filepath.Dir(r.writeConfigPath)
+	if err := r.fileSystem.MkdirAll(configDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
 
 	tempFile, err := r.createTempFile(configDir)
 	if err != nil {
@@ -75,11 +82,11 @@ func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	if err := r.fileSystem.Rename(tempFile, r.configPath); err != nil {
+	if err := r.fileSystem.Rename(tempFile, r.writeConfigPath); err != nil {
 		return fmt.Errorf("failed to atomically replace config file: %w", err)
 	}
 
-	r.logger.Infof("SSH config successfully updated: %s", r.configPath)
+	r.logger.Infof("SSH config successfully updated: %s", r.writeConfigPath)
 	return nil
 }
 
@@ -110,7 +117,8 @@ func (r *Repository) writeConfigToFile(filePath string, cfg *ssh_config.Config) 
 // createTempFile creates a temporary file in the specified directory
 func (r *Repository) createTempFile(dir string) (string, error) {
 	timestamp := time.Now().Format("20060102150405")
-	tempFileName := fmt.Sprintf("config%s%s", timestamp, TempSuffix)
+	baseName := filepath.Base(r.writeConfigPath)
+	tempFileName := fmt.Sprintf("%s.%s%s", baseName, timestamp, TempSuffix)
 	tempFilePath := filepath.Join(dir, tempFileName)
 
 	// Create the temp file with explicit 0600 permissions

@@ -25,7 +25,8 @@ import (
 
 // Repository implements ServerRepository interface for SSH config file operations.
 type Repository struct {
-	configPath      string
+	readConfigPath  string
+	writeConfigPath string
 	fileSystem      FileSystem
 	metadataManager *metadataManager
 	logger          *zap.SugaredLogger
@@ -33,19 +34,25 @@ type Repository struct {
 
 // NewRepository creates a new SSH config repository.
 func NewRepository(logger *zap.SugaredLogger, configPath, metaDataPath string) ports.ServerRepository {
-	return &Repository{
-		logger:          logger,
-		configPath:      configPath,
-		fileSystem:      DefaultFileSystem{},
-		metadataManager: newMetadataManager(metaDataPath, logger),
-	}
+	return NewRepositoryWithWritePath(logger, configPath, configPath, metaDataPath)
+}
+
+// NewRepositoryWithWritePath creates a repository that reads from a root SSH
+// config and writes mutations to a managed SSH config file.
+func NewRepositoryWithWritePath(logger *zap.SugaredLogger, readConfigPath, writeConfigPath, metaDataPath string) ports.ServerRepository {
+	return NewRepositoryWithFS(logger, readConfigPath, writeConfigPath, metaDataPath, DefaultFileSystem{})
 }
 
 // NewRepositoryWithFS creates a new SSH config repository with a custom filesystem.
-func NewRepositoryWithFS(logger *zap.SugaredLogger, configPath string, metaDataPath string, fs FileSystem) ports.ServerRepository {
+func NewRepositoryWithFS(logger *zap.SugaredLogger, readConfigPath, writeConfigPath string, metaDataPath string, fs FileSystem) ports.ServerRepository {
+	if writeConfigPath == "" {
+		writeConfigPath = readConfigPath
+	}
+
 	return &Repository{
 		logger:          logger,
-		configPath:      configPath,
+		readConfigPath:  readConfigPath,
+		writeConfigPath: writeConfigPath,
 		fileSystem:      fs,
 		metadataManager: newMetadataManager(metaDataPath, logger),
 	}
@@ -182,7 +189,7 @@ func (r *Repository) RecordSSH(alias string) error {
 	return r.metadataManager.recordSSH(alias)
 }
 
-// GetConfigFile returns the SSH config file path used by this repository.
+// GetConfigFile returns the root SSH config file path used by this repository.
 func (r *Repository) GetConfigFile() string {
-	return r.configPath
+	return r.readConfigPath
 }
