@@ -53,7 +53,8 @@ func (r *Repository) loadConfigAt(path string) (*ssh_config.Config, error) {
 
 // saveConfig writes the SSH config back to the file with atomic operations and backup management.
 func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
-	configDir := filepath.Dir(r.writeConfigPath)
+	writePath := resolvedWriteConfigPath(r.writeConfigPath)
+	configDir := filepath.Dir(writePath)
 	if err := r.fileSystem.MkdirAll(configDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -82,7 +83,7 @@ func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	if err := r.fileSystem.Rename(tempFile, r.writeConfigPath); err != nil {
+	if err := r.fileSystem.Rename(tempFile, writePath); err != nil {
 		return fmt.Errorf("failed to atomically replace config file: %w", err)
 	}
 
@@ -131,4 +132,18 @@ func (r *Repository) createTempFile(dir string) (string, error) {
 	}
 
 	return tempFilePath, nil
+}
+
+func resolvedWriteConfigPath(path string) string {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return path
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil || resolvedPath == "" {
+		return path
+	}
+
+	return resolvedPath
 }
