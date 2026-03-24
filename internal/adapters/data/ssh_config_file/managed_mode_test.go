@@ -15,6 +15,7 @@
 package ssh_config_file
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,7 +223,7 @@ Host root-server
 	if err != nil {
 		t.Fatalf("read root config after delete: %v", err)
 	}
-	if string(rootAfterDelete) != string(rootAfterAdd) {
+	if !bytes.Equal(rootAfterDelete, rootAfterAdd) {
 		t.Fatalf("root config should stay unchanged in managed mode\nbefore:\n%s\nafter:\n%s", string(rootAfterAdd), string(rootAfterDelete))
 	}
 }

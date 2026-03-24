@@ -65,11 +65,6 @@ func (r *Repository) matchesQuery(server domain.Server, query string) bool {
 	return false
 }
 
-// serverExists checks if a server with the given alias already exists in the config.
-func (r *Repository) serverExists(cfg *ssh_config.Config, alias string) bool {
-	return r.findHostByAlias(cfg, alias) != nil
-}
-
 // findHostByAlias finds a host by its alias in the SSH config.
 func (r *Repository) findHostByAlias(cfg *ssh_config.Config, alias string) *ssh_config.Host {
 	for _, host := range cfg.Hosts {

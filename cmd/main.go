@@ -36,6 +36,13 @@ var (
 )
 
 func main() {
+	const (
+		sshConfigHelp        = "path to ssh config file (default: ~/.ssh/config)"
+		managedModeHelp      = "read from the root ssh config but write changes to a managed ssh config file"
+		managedSSHConfigHelp = "path to the writable managed ssh config file " +
+			"(default: ~/.ssh/config.local when managed mode is enabled)"
+	)
+
 	log, err := logger.New("LAZYSSH")
 	if err != nil {
 		fmt.Println(err)
@@ -73,9 +80,9 @@ func main() {
 			return tui.Run()
 		},
 	}
-	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", "path to ssh config file (default: ~/.ssh/config)")
-	rootCmd.PersistentFlags().BoolVar(&managedMode, "managed-mode", false, "read from the root ssh config but write changes to a managed ssh config file")
-	rootCmd.PersistentFlags().StringVar(&managedSSHConfigFile, "managed-sshconfig", "", "path to the writable managed ssh config file (default: ~/.ssh/config.local when managed mode is enabled)")
+	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", sshConfigHelp)
+	rootCmd.PersistentFlags().BoolVar(&managedMode, "managed-mode", false, managedModeHelp)
+	rootCmd.PersistentFlags().StringVar(&managedSSHConfigFile, "managed-sshconfig", "", managedSSHConfigHelp)
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {
