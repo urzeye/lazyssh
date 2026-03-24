@@ -218,6 +218,10 @@ func (t *tui) isServerListFocused() bool {
 
 func (t *tui) handleSearchFocus() {
 	if t.app != nil && t.searchBar != nil {
+		if !t.searchVisible {
+			t.showSearchBar()
+			return
+		}
 		t.app.SetFocus(t.searchBar)
 	}
 }
@@ -266,9 +270,7 @@ func (t *tui) handleSearchNavigate(direction int) {
 }
 
 func (t *tui) handleReturnToSearch() {
-	if t.searchBar != nil {
-		t.app.SetFocus(t.searchBar)
-	}
+	t.handleSearchFocus()
 }
 
 func (t *tui) handleServerConnect() {
@@ -623,9 +625,34 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 // UI State Management (hide UI elements)
 // =============================================================================
 
-// blurSearchBar moves focus back to the server list without changing layout.
-func (t *tui) blurSearchBar() {
-	if t.app != nil && t.serverList != nil {
+func (t *tui) showSearchBar() {
+	if t.left == nil || t.searchBar == nil || t.serverList == nil {
+		return
+	}
+
+	t.left.Clear()
+	t.left.AddItem(t.searchBar, 3, 0, true)
+	t.left.AddItem(t.serverList, 0, 1, false)
+	t.searchVisible = true
+	if t.app != nil {
+		t.app.SetFocus(t.searchBar)
+	}
+}
+
+func (t *tui) hideSearchBar() {
+	if t.searchBar != nil && t.searchBar.GetText() != "" {
+		t.searchBar.SetText("")
+	}
+
+	if t.left == nil || t.hintBar == nil || t.serverList == nil {
+		return
+	}
+
+	t.left.Clear()
+	t.left.AddItem(t.hintBar, 1, 0, false)
+	t.left.AddItem(t.serverList, 0, 1, true)
+	t.searchVisible = false
+	if t.app != nil {
 		t.app.SetFocus(t.serverList)
 	}
 }

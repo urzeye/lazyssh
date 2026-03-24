@@ -37,6 +37,7 @@ type tui struct {
 	settings      *settingsManager
 
 	header     *AppHeader
+	hintBar    *tview.TextView
 	searchBar  *SearchBar
 	serverList *ServerList
 	details    *ServerDetails
@@ -46,7 +47,8 @@ type tui struct {
 	left    *tview.Flex
 	content *tview.Flex
 
-	sortMode SortMode
+	sortMode      SortMode
+	searchVisible bool
 }
 
 func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string) App {
@@ -91,9 +93,10 @@ func (t *tui) initializeTheme() *tui {
 
 func (t *tui) buildComponents() *tui {
 	t.header = NewAppHeader(t.version, t.commit, RepoURL)
+	t.hintBar = NewHintBar()
 	t.searchBar = NewSearchBar().
 		OnSearch(t.handleSearchInput).
-		OnEscape(t.blurSearchBar).
+		OnEscape(t.hideSearchBar).
 		OnNavigate(t.handleSearchNavigate)
 	IsForwarding = t.serverService.IsForwarding
 
@@ -105,6 +108,7 @@ func (t *tui) buildComponents() *tui {
 
 	// default sort mode
 	t.sortMode = SortByAliasAsc
+	t.searchVisible = false
 
 	return t
 }
@@ -125,7 +129,7 @@ func (t *tui) loadPreferences() *tui {
 
 func (t *tui) buildLayout() *tui {
 	t.left = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(t.searchBar, 3, 0, false).
+		AddItem(t.hintBar, 1, 0, false).
 		AddItem(t.serverList, 0, 1, true)
 
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
