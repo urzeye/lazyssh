@@ -62,6 +62,14 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	if server.LastSeen.IsZero() {
 		lastSeen = "Never"
 	}
+	sourceText := server.SourceFile
+	if sourceText == "" {
+		sourceText = "Unknown"
+	}
+	editableText := "yes"
+	if server.Readonly {
+		editableText = "no (included config)"
+	}
 	serverKey := strings.Join(server.IdentityFiles, ", ")
 
 	pinnedStr := "true"
@@ -83,9 +91,9 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	}
 
 	text := fmt.Sprintf(
-		"[::b]%s[-]\n\n[::b]Basic Settings:[-]\n  Host: [white]%s[-]\n  User: [white]%s[-]\n  Port: [white]%s[-]\n  Key:  [white]%s[-]\n  Tags: %s\n  Pinned: [white]%s[-]\n  Last SSH: %s\n  SSH Count: [white]%d[-]\n",
+		"[::b]%s[-]\n\n[::b]Basic Settings:[-]\n  Host: [white]%s[-]\n  User: [white]%s[-]\n  Port: [white]%s[-]\n  Key:  [white]%s[-]\n  Source: [white]%s[-]\n  Editable: [white]%s[-]\n  Tags: %s\n  Pinned: [white]%s[-]\n  Last SSH: %s\n  SSH Count: [white]%d[-]\n",
 		aliasText, hostText, userText, portText,
-		serverKey, tagsText, pinnedStr,
+		serverKey, sourceText, editableText, tagsText, pinnedStr,
 		lastSeen, server.SSHCount)
 
 	// Advanced settings section (only show non-empty fields)
@@ -213,7 +221,23 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	}
 
 	// Commands list
-	text += "\n[::b]Commands:[-]\n  Enter: SSH connect\n  f: Port forward\n  x: Stop forwarding\n  c: Copy SSH command\n  g: Ping server\n  r: Refresh list\n  a: Add new server\n  e: Edit entry\n  t: Edit tags\n  d: Delete entry\n  p: Pin/Unpin"
+	commands := []string{
+		"Enter: SSH connect",
+		"f: Port forward",
+		"x: Stop forwarding",
+		"c: Copy SSH command",
+		"g: Ping server",
+		"r: Refresh list",
+		"a: Add new server",
+		"p: Pin/Unpin",
+	}
+	if server.Readonly {
+		commands = append(commands, "Included entries are read-only here")
+	} else {
+		commands = append(commands, "e: Edit entry", "t: Edit tags", "d: Delete entry")
+	}
+
+	text += "\n[::b]Commands:[-]\n  " + strings.Join(commands, "\n  ")
 
 	sd.TextView.SetText(text)
 }

@@ -23,6 +23,8 @@ type Server struct {
 	User          string
 	Port          int
 	IdentityFiles []string
+	SourceFile    string
+	Readonly      bool
 	Tags          []string
 	LastSeen      time.Time
 	PinnedAt      time.Time

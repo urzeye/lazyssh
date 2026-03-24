@@ -25,9 +25,15 @@ import (
 
 // toDomainServer converts ssh_config.Config to a slice of domain.Server.
 func (r *Repository) toDomainServer(cfg *ssh_config.Config) []domain.Server {
+	return r.toDomainServersFromConfig(cfg, "", false)
+}
+
+// toDomainServersFromConfig converts a parsed SSH config into domain servers and
+// records where each server came from so the UI can protect include-managed
+// entries from destructive edits.
+func (r *Repository) toDomainServersFromConfig(cfg *ssh_config.Config, sourceFile string, readonly bool) []domain.Server {
 	servers := make([]domain.Server, 0, len(cfg.Hosts))
 	for _, host := range cfg.Hosts {
-
 		aliases := make([]string, 0, len(host.Patterns))
 
 		for _, pattern := range host.Patterns {
@@ -46,6 +52,8 @@ func (r *Repository) toDomainServer(cfg *ssh_config.Config) []domain.Server {
 			Aliases:       aliases,
 			Port:          22,
 			IdentityFiles: []string{},
+			SourceFile:    sourceFile,
+			Readonly:      readonly,
 		}
 
 		for _, node := range host.Nodes {

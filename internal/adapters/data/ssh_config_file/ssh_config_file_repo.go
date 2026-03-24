@@ -54,12 +54,10 @@ func NewRepositoryWithFS(logger *zap.SugaredLogger, configPath string, metaDataP
 // ListServers returns all servers matching the query pattern.
 // Empty query returns all servers.
 func (r *Repository) ListServers(query string) ([]domain.Server, error) {
-	cfg, err := r.loadConfig()
+	servers, err := r.loadAllServers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
-
-	servers := r.toDomainServer(cfg)
 	metadata, err := r.metadataManager.loadAll()
 	if err != nil {
 		r.logger.Warnf("Failed to load metadata: %v", err)
@@ -75,13 +73,15 @@ func (r *Repository) ListServers(query string) ([]domain.Server, error) {
 
 // AddServer adds a new server to the SSH config.
 func (r *Repository) AddServer(server domain.Server) error {
+	if existing, found, err := r.findLoadedServerByAlias(server.Alias, nil); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	} else if found {
+		return r.duplicateAliasError(server.Alias, existing)
+	}
+
 	cfg, err := r.loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	if r.serverExists(cfg, server.Alias) {
-		return fmt.Errorf("server with alias '%s' already exists", server.Alias)
 	}
 
 	host := r.createHostFromServer(server)
@@ -96,6 +96,23 @@ func (r *Repository) AddServer(server domain.Server) error {
 
 // UpdateServer updates an existing server in the SSH config.
 func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server) error {
+	if server.Readonly {
+		return fmt.Errorf("server '%s' is defined in %s and cannot be edited here", server.Alias, server.SourceFile)
+	}
+
+	if server.Alias != newServer.Alias {
+		excludedAliases := make(map[string]struct{}, len(server.Aliases))
+		for _, alias := range server.Aliases {
+			excludedAliases[alias] = struct{}{}
+		}
+
+		if existing, found, err := r.findLoadedServerByAlias(newServer.Alias, excludedAliases); err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		} else if found {
+			return r.duplicateAliasError(newServer.Alias, existing)
+		}
+	}
+
 	cfg, err := r.loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -107,10 +124,6 @@ func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server)
 	}
 
 	if server.Alias != newServer.Alias {
-		if r.serverExists(cfg, newServer.Alias) {
-			return fmt.Errorf("server with alias '%s' already exists", newServer.Alias)
-		}
-
 		newPatterns := make([]*ssh_config.Pattern, 0, len(host.Patterns))
 		for _, pattern := range host.Patterns {
 			if pattern.Str == server.Alias {
@@ -136,6 +149,10 @@ func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server)
 
 // DeleteServer removes a server from the SSH config.
 func (r *Repository) DeleteServer(server domain.Server) error {
+	if server.Readonly {
+		return fmt.Errorf("server '%s' is defined in %s and cannot be deleted here", server.Alias, server.SourceFile)
+	}
+
 	cfg, err := r.loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
