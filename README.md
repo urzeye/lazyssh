@@ -13,246 +13,188 @@
 
 ---
 
-Lazyssh is a terminal-based, interactive SSH manager inspired by tools like lazydocker and k9s — but built for managing your fleet of servers directly from your terminal.
-<br/>
-With lazyssh, you can quickly navigate, connect, manage, and transfer files between your local machine and any server defined in your `~/.ssh/config`. No more remembering IP addresses or running long scp commands — just a clean, keyboard-driven UI.
+lazyssh 是一个运行在终端中的交互式 SSH 管理器，灵感来自 `lazydocker` 和 `k9s`，但专门服务于 SSH 主机管理。
+借助 lazyssh，你可以直接在终端里浏览、搜索、连接、编辑和整理 `~/.ssh/config` 中定义的服务器，无需再记忆 IP 地址，也不用频繁手敲长串 `ssh` / `scp` 命令，一切都围绕高效的键盘工作流展开。
 
 ---
 
-## ✨ Features
+## ✨ 功能特性
 
-### Server Management
-- 📜 Read & display servers from your `~/.ssh/config` in a scrollable list.
-- ➕ Add a new server from the UI with comprehensive SSH configuration options.
-- ✏ Edit existing server entries directly from the UI with a tabbed interface.
-- 🗑 Delete server entries safely.
-- 📌 Pin / unpin servers to keep favorites at the top.
-- 🏓 Ping server to check status.
+### 主机管理
+- 从 `~/.ssh/config` 中读取并展示主机列表，支持滚动浏览
+- 在 UI 中直接新增主机，覆盖常见 SSH 配置项
+- 通过分标签页表单编辑已有主机配置
+- 安全删除主机条目
+- 支持置顶 / 取消置顶，便于固定常用主机
+- 支持对主机执行 `ping`，快速判断在线状态
 
-### Quick Server Navigation
-- 🔍 Fuzzy search by alias, IP, or tags.
-- 🖥 One‑keypress SSH into the selected server (Enter).
-- 🏷 Tag servers (e.g., prod, dev, test) for quick filtering.
-- ↕️ Sort by alias or last SSH (toggle + reverse).
+### 快速导航
+- 支持按别名、IP、用户或标签进行模糊搜索
+- 选中主机后按回车即可直接 SSH 登录
+- 支持用标签组织主机，例如 `prod`、`dev`、`test`
+- 支持按别名或最近连接时间排序，并可反转排序方向
 
-### Advanced SSH Configuration
-- 🔗 Port forwarding (LocalForward, RemoteForward, DynamicForward).
-- 🚀 Connection multiplexing for faster subsequent connections.
-- 🔐 Advanced authentication options (public key, password, agent forwarding).
-- 🔒 Security settings (ciphers, MACs, key exchange algorithms).
-- 🌐 Proxy settings (ProxyJump, ProxyCommand).
-- ⚙️ Extensive SSH config options organized in tabbed interface.
+### 高级 SSH 配置
+- 支持端口转发：`LocalForward`、`RemoteForward`、`DynamicForward`
+- 支持连接复用，加快后续连接速度
+- 支持高级认证方式，例如公钥、密码、Agent Forwarding
+- 支持安全相关配置，例如加密算法、MAC、密钥交换算法
+- 支持代理配置，例如 `ProxyJump`、`ProxyCommand`
+- 通过标签页组织大量 SSH 选项，编辑更清晰
 
-### Key Management
-- 🔑 SSH key autocomplete with automatic detection of available keys.
-- 📝 Smart key selection with support for multiple keys.
+### 密钥管理
+- 自动发现本地 SSH 密钥，并提供自动补全
+- 支持在多把密钥之间快速选择
 
+### 计划中的能力
+- 在本地与远端主机之间复制文件，并提供更友好的选择界面
+- SSH 公钥部署能力：
+  - 使用默认本地公钥，例如 `~/.ssh/id_ed25519.pub` 或 `~/.ssh/id_rsa.pub`
+  - 手动粘贴自定义公钥
+  - 生成新的密钥对并部署到目标主机
+  - 自动追加到 `~/.ssh/authorized_keys`，并处理正确权限
 
-### Upcoming
-- 📁 Copy files between local and servers with an easy picker UI.
-- 🔑 SSH Key Deployment Features:
-    - Use default local public key (`~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub`)
-    - Paste custom public keys manually
-    - Generate new keypairs and deploy them
-    - Automatically append keys to `~/.ssh/authorized_keys` with correct permissions
 ---
 
-## 🔐 Security Notice
+## 🔐 安全说明
 
-lazyssh does not introduce any new security risks.
-It is simply a UI/TUI wrapper around your existing `~/.ssh/config` file.
+lazyssh 不会引入额外的安全风险。
+它本质上只是对你现有 SSH 配置的一层 TUI / UI 封装。
 
-- All SSH connections are executed through your system’s native ssh binary (OpenSSH).
+- 所有 SSH 连接都通过系统自带的 `ssh` 二进制程序执行，也就是 OpenSSH
+- lazyssh 不会存储、传输或修改你的私钥、密码或其他凭据
+- 你已有的 `IdentityFile` 路径和 `ssh-agent` 工作流都可以照常使用
+- lazyssh 只会读取并更新你的 SSH 配置文件；在首次修改前会自动创建备份
+- 它会尽量保留原有文件权限，避免因为写回配置带来额外风险
 
-- Private keys, passwords, and credentials are never stored, transmitted, or modified by lazyssh.
+## 🛡️ 配置安全：非破坏性写入与自动备份
 
-- Your existing IdentityFile paths and ssh-agent integrations work exactly as before.
+- 非破坏性编辑：lazyssh 只写入必要的最小变更，并尽可能保留原有注释、空行、顺序和未触碰的配置项
+- 原子写入：更新先写入临时文件，再原子替换原文件，尽量降低部分写入导致配置损坏的风险
+- 首次备份：第一次修改配置前，会在 SSH 配置旁生成一份 `config.original.backup`；如果该文件已存在，就不会重复覆盖
+- 滚动备份：每次后续保存时，还会生成一份带时间戳的备份，例如 `~/.ssh/config-<timestamp>-lazyssh.backup`
+- 备份轮换：应用最多保留 10 份滚动备份，超出的旧备份会自动清理
 
-- lazyssh only reads and updates your `~/.ssh/config`. A backup of the file is created automatically before any changes.
-
-- File permissions on your SSH config are preserved to ensure security.
-
-
-## 🛡️ Config Safety: Non‑destructive writes and backups
-
-- Non‑destructive edits: lazyssh only writes the minimal required changes to your ~/.ssh/config. It uses a parser that preserves existing comments, spacing, order, and any settings it didn’t touch. Your handcrafted comments and formatting remain intact.
-- Atomic writes: updates are written to a temporary file and then atomically renamed over the original, minimizing the risk of partial writes.
-- Backups:
-  - One‑time original backup: before lazyssh makes its first change, it creates a single snapshot named config.original.backup beside your SSH config. If this file is present, it will never be recreated or overwritten.
-  - Rolling backups: on every subsequent save, lazyssh also creates a timestamped backup named like: ~/.ssh/config-<timestamp>-lazyssh.backup. The app keeps at most 10 of these backups, automatically removing the oldest ones.
-
-## 📷 Screenshots
+## 📷 截图预览
 
 <div align="center">
 
-### 🚀 Startup
-<img src="./docs/loader.png" alt="App starting splash/loader" width="800" />
+### 🚀 启动画面
+<img src="./docs/loader.png" alt="应用启动界面" width="800" />
 
-Clean loading screen when launching the app
-
----
-
-### 📋 Server Management Dashboard
-<img src="./docs/list server.png" alt="Server list view" width="900" />
-
-Main dashboard displaying all configured servers with status indicators, pinned favorites at the top, and easy navigation
+应用启动时的加载页面
 
 ---
 
-### 🔎 Search
-<img src="./docs/search.png" alt="Fuzzy search servers" width="900" />
+### 📋 主机管理面板
+<img src="./docs/list server.png" alt="主机列表视图" width="900" />
 
-Fuzzy search functionality to quickly find servers by name, IP address, or tags
-
----
-
-### ➕ Add/Edit Server
-<img src="./docs/add server.png" alt="Add a new server" width="900" />
-
-Tabbed interface for managing SSH connections with extensive configuration options organized into:
-- **Basic** - Host, user, port, keys, tags
-- **Connection** - Proxy, timeouts, multiplexing, canonicalization
-- **Forwarding** - Port forwarding, X11, agent
-- **Authentication** - Keys, passwords, methods, algorithm settings
-- **Advanced** - Security, cryptography, environment, debugging
+主界面会展示所有已配置主机，包括状态信息、置顶主机和便捷导航能力
 
 ---
 
-### 🔐 Connect to server
-<img src="./docs/ssh.png" alt="SSH connection details" width="900" />
+### 🔎 搜索
+<img src="./docs/search.png" alt="模糊搜索主机" width="900" />
 
-SSH into the selected server
+可按主机名、IP 地址、用户或标签快速检索目标主机
+
+---
+
+### ➕ 新增 / 编辑主机
+<img src="./docs/add server.png" alt="新增主机界面" width="900" />
+
+通过分标签页界面管理 SSH 连接，主要包括：
+
+- **基础信息**：主机、用户、端口、密钥、标签
+- **连接设置**：代理、超时、连接复用、规范化
+- **转发设置**：端口转发、X11、Agent
+- **认证设置**：密钥、密码、认证方式、算法选项
+- **高级设置**：安全、加密、环境变量、调试选项
+
+---
+
+### 🔐 连接主机
+<img src="./docs/ssh.png" alt="SSH 连接详情" width="900" />
+
+直接从界面发起 SSH 连接
 
 </div>
 
 ---
 
-## 📦 Installation
+## 📦 安装
 
-### Option 1: Homebrew (macOS)
+### 方式一：使用 mise 安装（推荐）
 
-```bash
-brew install Adembc/homebrew-tap/lazyssh
-```
-
-### Option 2: Download Binary from Releases
-
-Download from [GitHub Releases](https://github.com/Adembc/lazyssh/releases). You can use the snippet below to automatically fetch the latest version for your OS/ARCH (Darwin/Linux and amd64/arm64 supported):
+如果你已经安装了 `mise`，在本仓库发布 Release 后，可以直接通过 GitHub Release 资产安装：
 
 ```bash
-# Detect latest version
-LATEST_TAG=$(curl -fsSL https://api.github.com/repos/Adembc/lazyssh/releases/latest | jq -r .tag_name)
-# Download the correct binary for your system
-curl -LJO "https://github.com/Adembc/lazyssh/releases/download/${LATEST_TAG}/lazyssh_$(uname)_$(uname -m).tar.gz"
-# Extract the binary
-tar -xzf lazyssh_$(uname)_$(uname -m).tar.gz
-# Move to /usr/local/bin or another directory in your PATH
-sudo mv lazyssh /usr/local/bin/
-# enjoy!
+mise use -g github:urzeye/lazyssh@latest
 lazyssh
 ```
 
-### Option 3: Build from Source
+如果你希望固定某个版本，也可以显式指定版本号：
 
 ```bash
-# Clone the repository
-git clone https://github.com/Adembc/lazyssh.git
+mise use -g github:urzeye/lazyssh@0.4.0
+```
+
+说明：
+
+- 这里使用的是 `mise` 的 `github:` backend，会直接从 `urzeye/lazyssh` 的 Release 下载对应平台的二进制包
+- `mise` 会把版本写入全局配置，后续在任意终端里都可以直接使用 `lazyssh`
+
+### 方式二：从源码构建
+
+```bash
+git clone https://github.com/urzeye/lazyssh.git
 cd lazyssh
 
-# Build for macOS
+# 构建
 make build
 ./bin/lazyssh
 
-# Or Run it directly
+# 或直接运行
 make run
 ```
 
 ---
 
-## ⌨️ Key Bindings
+## ⌨️ 快捷键
 
-| Key   | Action                        |
-| ----- | ----------------------------- |
-| /     | Toggle search bar             |
-| ↑↓/jk | Navigate servers              |
-| Enter | SSH into selected server      |
-| c     | Copy SSH command to clipboard |
-| h     | Copy Host to clipboard |
-| g     | Ping selected server          |
-| r     | Refresh background data       |
-| a     | Add server                    |
-| e     | Edit server                   |
-| t     | Edit tags                     |
-| d     | Delete server                 |
-| p     | Pin/Unpin server              |
-| s     | Toggle sort field             |
-| S     | Reverse sort order            |
-| q     | Quit                          |
+| 按键 | 说明 |
+| ---- | ---- |
+| `/` | 展开 / 收起搜索栏 |
+| `↑↓` / `j` `k` | 在主机列表中移动 |
+| `Enter` | SSH 连接到当前选中主机 |
+| `c` | 复制 SSH 命令到剪贴板 |
+| `h` | 复制 Host 到剪贴板 |
+| `g` | Ping 当前主机 |
+| `r` | 刷新后台数据 |
+| `a` | 新增主机 |
+| `e` | 编辑主机 |
+| `t` | 编辑标签 |
+| `d` | 删除主机 |
+| `p` | 置顶 / 取消置顶 |
+| `s` | 切换排序字段 |
+| `S` | 反转排序顺序 |
+| `0` / `1` / `2` | 聚焦搜索栏 / 主机列表 / 详情面板 |
+| `q` | 退出 |
 
-**In Server Form:**
-| Key    | Action               |
-| ------ | -------------------- |
-| Ctrl+H | Previous tab         |
-| Ctrl+L | Next tab             |
-| Ctrl+S | Save                 |
-| Esc    | Cancel               |
+**在主机表单中：**
 
-Tip: The hint bar at the top of the list shows the most useful shortcuts.
+| 按键 | 说明 |
+| ---- | ---- |
+| `Ctrl+H` | 切换到上一个标签页 |
+| `Ctrl+L` | 切换到下一个标签页 |
+| `Ctrl+S` | 保存 |
+| `Esc` | 取消 |
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome!
-
-- If you spot a bug or have a feature request, please [open an issue](https://github.com/adembc/lazyssh/issues).
-- If you'd like to contribute, fork the repo and submit a pull request ❤️.
-
-We love seeing the community make Lazyssh better 🚀
-
-### Semantic Pull Requests
-
-This repository enforces semantic PR titles via an automated GitHub Action. Please format your PR title as:
-
-- type(scope): short descriptive subject
-Notes:
-- Scope is optional and should be one of: ui, cli, config, parser.
-
-Allowed types in this repo:
-- feat: a new feature
-- fix: a bug fix
-- improve: quality or UX improvements that are not a refactor or perf
-- refactor: code change that neither fixes a bug nor adds a feature
-- docs: documentation only changes
-- test: adding or refactoring tests
-- ci: CI/CD or automation changes
-- chore: maintenance tasks, dependency bumps, non-code infra
-- revert: reverts a previous commit
-
-Examples:
-- feat(ui): add server pinning and sorting options
-- fix(parser): handle comments at end of Host blocks
-- improve(cli): show friendly error when ssh binary missing
-- refactor(config): simplify backup rotation logic
-- docs: add installation instructions for Homebrew
-- ci: cache Go toolchain and dependencies
-
-Tip: If your PR touches multiple areas, pick the most relevant scope or omit the scope.
+提示：列表顶部的提示栏会显示最常用的快捷键，方便随时查看。
 
 ---
 
-## ⭐ Support
+## 🙏 致谢
 
-If you find Lazyssh useful, please consider giving the repo a **star** ⭐️ and join [stargazers](https://github.com/adembc/lazyssh/stargazers).
-
-☕ You can also support me by [buying me a coffee](https://www.buymeacoffee.com/adembc) ❤️
-<br/>
-<a href="https://buymeacoffee.com/adembc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" width="200"></a>
-
-
----
-
-## 🙏 Acknowledgments
-
-- Built with [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell).
-- Inspired by [k9s](https://github.com/derailed/k9s) and [lazydocker](https://github.com/jesseduffield/lazydocker).
+- 基于 [tview](https://github.com/rivo/tview) 与 [tcell](https://github.com/gdamore/tcell) 构建
+- 设计灵感来自 [k9s](https://github.com/derailed/k9s) 和 [lazydocker](https://github.com/jesseduffield/lazydocker)
