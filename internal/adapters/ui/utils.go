@@ -81,6 +81,13 @@ func pinnedIcon(pinnedAt time.Time) string {
 	return "📌" // pinned
 }
 
+func originIcon(server domain.Server) string {
+	if server.Readonly {
+		return "🔗"
+	}
+	return "🏠"
+}
+
 func formatServerLine(s domain.Server, maxAliasWidth int) (primary, secondary string) {
 	icon := cellPad(pinnedIcon(s.PinnedAt), 2)
 	// forwarding column after Host/IP
@@ -101,7 +108,16 @@ func formatServerLine(s domain.Server, maxAliasWidth int) (primary, secondary st
 		paddedAlias = s.Alias + strings.Repeat(" ", maxAliasWidth-aliasWidth)
 	}
 	// Use a consistent color for alias; host/IP fixed width; then forwarding column
-	primary = fmt.Sprintf("%s [white::b]%s[-] [#AAAAAA]%-18s[-] %s [#888888]Last SSH: %-8s[-]  %s", icon, paddedAlias, s.Host, fCol, humanizeDuration(s.LastSeen), renderTagBadgesForList(s.Tags))
+	primary = fmt.Sprintf(
+		"%s [white::b]%s[-] [#AAAAAA]%-18s[-] %s [#888888]Last SSH: %-8s[-]  %s %s",
+		icon,
+		paddedAlias,
+		s.Host,
+		fCol,
+		humanizeDuration(s.LastSeen),
+		renderTagBadgesForList(s.Tags),
+		originIcon(s),
+	)
 	secondary = ""
 	return
 }

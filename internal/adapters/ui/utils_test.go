@@ -171,3 +171,22 @@ func TestBuildSSHCommand_CompleteCommand(t *testing.T) {
 		t.Errorf("Command should contain 'admin@example.com', got: %q", result)
 	}
 }
+
+func TestFormatServerLine_ShowsOriginIcon(t *testing.T) {
+	mainLine, _ := formatServerLine(domain.Server{
+		Alias: "main",
+		Host:  "main.example.com",
+	}, 4)
+	if !strings.Contains(mainLine, "🏠") {
+		t.Fatalf("main config server line should contain house icon, got %q", mainLine)
+	}
+
+	includedLine, _ := formatServerLine(domain.Server{
+		Alias:    "included",
+		Host:     "10.0.0.1",
+		Readonly: true,
+	}, 8)
+	if !strings.Contains(includedLine, "🔗") {
+		t.Fatalf("included config server line should contain link icon, got %q", includedLine)
+	}
+}
