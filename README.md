@@ -5,8 +5,9 @@
 这是基于原版 `lazyssh` 的增强版本，目前主要补充了这些能力：
 
 - 支持递归读取 `Include` / `conf.d` 形式的 SSH 配置，不再局限于单一 `~/.ssh/config`
-- 对来自 include 文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
-- 新增 `--sshconfig` 参数，可指定自定义 SSH 配置文件，连接与端口转发也会统一使用这份配置
+- 支持 managed 模式：从 root config 实时读取完整配置树，同时只把新增 / 修改写回指定的 managed 文件
+- 对来自 include 文件或其他非托管文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
+- 新增 `--sshconfig`、`--managed-mode`、`--managed-sshconfig` 参数，适合和 `config.local` / `conf.d` 工作流配合
 - 搜索改为更实用的模糊相关性排序，按别名、主机、用户、标签综合匹配
 - 增强了日常使用体验：可折叠搜索栏、`0/1/2` 面板切换、复制 Host、记住排序方式
 - 合并了一批高价值修复：输入框退格恢复正常、鼠标点击后 `j/k` 仍可导航、用户名支持 `@` 和 `:`、列表别名对齐更稳定
@@ -67,12 +68,39 @@ lazyssh 不会引入额外的安全风险。
 - lazyssh 只会读取并更新你的 SSH 配置文件；在首次修改前会自动创建备份
 - 它会尽量保留原有文件权限，避免因为写回配置带来额外风险
 
+## 🧭 Managed Mode
+
+如果你的 SSH 配置结构类似这样：
+
+```sshconfig
+Include ~/.orbstack/ssh/config
+Include ~/.ssh/config.d/*.conf
+Include ~/.ssh/config.local
+```
+
+可以让 lazyssh 进入 managed 模式：
+
+```bash
+lazyssh \
+  --sshconfig ~/.ssh/config \
+  --managed-mode \
+  --managed-sshconfig ~/.ssh/config.local
+```
+
+这个模式下：
+
+- `--sshconfig` 指向 root config，lazyssh 会按它递归读取完整 `Include` 树
+- `--managed-sshconfig` 指向真正可写的文件，例如 `~/.ssh/config.local`
+- 来自 root config、`config.d`、OrbStack 或其他 include 文件的条目会显示为只读
+- 只有来自 managed 文件的主机可以被新增、编辑、删除
+- SSH 连接和端口转发仍然继续使用 root config，因此和系统里的 `ssh` 行为保持一致
+
 ## 🛡️ 配置安全：非破坏性写入与自动备份
 
 - 非破坏性编辑：lazyssh 只写入必要的最小变更，并尽可能保留原有注释、空行、顺序和未触碰的配置项
 - 原子写入：更新先写入临时文件，再原子替换原文件，尽量降低部分写入导致配置损坏的风险
-- 首次备份：第一次修改配置前，会在 SSH 配置旁生成一份 `config.original.backup`；如果该文件已存在，就不会重复覆盖
-- 滚动备份：每次后续保存时，还会生成一份带时间戳的备份，例如 `~/.ssh/config-<timestamp>-lazyssh.backup`
+- 首次备份：第一次修改某个受管 SSH 配置文件前，会在同目录生成一份 `<文件名>.original.backup`，例如 `config.original.backup` 或 `config.local.original.backup`
+- 滚动备份：每次后续保存时，还会生成一份带时间戳的备份，例如 `~/.ssh/config.local-<timestamp>-lazyssh.backup`
 - 备份轮换：应用最多保留 10 份滚动备份，超出的旧备份会自动清理
 
 ## 📷 截图预览
@@ -136,7 +164,7 @@ lazyssh
 如果你希望固定某个版本，也可以显式指定版本号：
 
 ```bash
-mise use -g github:urzeye/lazyssh@0.4.0
+mise use -g github:urzeye/lazyssh@0.x.y
 ```
 
 说明：
