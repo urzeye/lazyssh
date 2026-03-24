@@ -16,6 +16,8 @@ package ssh_config_file
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Adembc/lazyssh/internal/core/domain"
@@ -104,7 +106,7 @@ func (r *Repository) createHostFromServer(server domain.Server) *ssh_config.Host
 		r.addKVNodeIfNotEmpty(host, "Port", fmt.Sprintf("%d", server.Port))
 	}
 	for _, identityFile := range server.IdentityFiles {
-		r.addKVNodeIfNotEmpty(host, "IdentityFile", identityFile)
+		r.addKVNodeIfNotEmpty(host, "IdentityFile", normalizeIdentityFilePath(identityFile))
 	}
 
 	// Connection and proxy settings
@@ -340,7 +342,7 @@ func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Ser
 	// Replace multi-value entries entirely to reflect the new state
 	host.Nodes = removeNodesByKey(host.Nodes, "IdentityFile")
 	for _, identityFile := range newServer.IdentityFiles {
-		r.addKVNodeIfNotEmpty(host, "IdentityFile", identityFile)
+		r.addKVNodeIfNotEmpty(host, "IdentityFile", normalizeIdentityFilePath(identityFile))
 	}
 
 	host.Nodes = removeNodesByKey(host.Nodes, "LocalForward")
@@ -567,4 +569,36 @@ func (r *Repository) removeHostByAlias(hosts []*ssh_config.Host, alias string) [
 		}
 	}
 	return hosts
+}
+
+func normalizeIdentityFilePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return path
+	}
+
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		return filepath.ToSlash(path)
+	}
+
+	if !filepath.IsAbs(path) {
+		return filepath.ToSlash(path)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.ToSlash(path)
+	}
+
+	relativePath, err := filepath.Rel(home, path)
+	if err != nil || relativePath == "." || relativePath == "" {
+		return filepath.ToSlash(path)
+	}
+
+	prefix := ".." + string(filepath.Separator)
+	if relativePath == ".." || strings.HasPrefix(relativePath, prefix) {
+		return filepath.ToSlash(path)
+	}
+
+	return "~/" + filepath.ToSlash(relativePath)
 }
