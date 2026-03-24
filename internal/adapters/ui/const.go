@@ -16,7 +16,7 @@ package ui
 
 const (
 	AppName = "lazyssh"
-	RepoURL = "github.com/adembc/lazyssh"
+	RepoURL = "github.com/urzeye/lazyssh"
 	Banner  = `
 
 			  $$\                                                   $$\       
