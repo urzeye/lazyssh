@@ -15,7 +15,12 @@
 package ssh_config_file
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func TestConvertCLIForwardToConfigFormat(t *testing.T) {
@@ -143,5 +148,57 @@ func TestConvertConfigForwardToCLIFormat(t *testing.T) {
 				t.Errorf("convertConfigForwardToCLIFormat(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestUpdateServerDoesNotInsertExtraBlankLines(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config")
+	metadataPath := filepath.Join(tempDir, "metadata.json")
+
+	config := `Host example-host
+    HostName example-ip
+    Port 22
+    User root
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), configPath, metadataPath)
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("ListServers() returned %d servers, want 1", len(servers))
+	}
+
+	current := servers[0]
+	updated := current
+	updated.User = "admin"
+
+	if err := repo.UpdateServer(current, updated); err != nil {
+		t.Fatalf("UpdateServer() error = %v", err)
+	}
+
+	configAfterUpdate, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config after update: %v", err)
+	}
+
+	if strings.Contains(string(configAfterUpdate), "\n\n    HostName") ||
+		strings.Contains(string(configAfterUpdate), "\n\n    Port") ||
+		strings.Contains(string(configAfterUpdate), "\n\n    User") {
+		t.Fatalf("config should not contain blank lines between directives\n%s", string(configAfterUpdate))
+	}
+
+	expected := `Host example-host
+    HostName example-ip
+    Port 22
+    User admin
+`
+	if string(configAfterUpdate) != expected {
+		t.Fatalf("updated config = %q, want %q", string(configAfterUpdate), expected)
 	}
 }
