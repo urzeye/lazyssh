@@ -2,6 +2,15 @@
   <img src="./docs/logo.png" alt="lazyssh logo" width="600" height="600"/>
 </div>
 
+这是基于原版 `lazyssh` 的增强版本，目前主要补充了这些能力：
+
+- 支持递归读取 `Include` / `conf.d` 形式的 SSH 配置，不再局限于单一 `~/.ssh/config`
+- 对来自 include 文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
+- 新增 `--sshconfig` 参数，可指定自定义 SSH 配置文件，连接与端口转发也会统一使用这份配置
+- 搜索改为更实用的模糊相关性排序，按别名、主机、用户、标签综合匹配
+- 增强了日常使用体验：可折叠搜索栏、`0/1/2` 面板切换、复制 Host、记住排序方式
+- 合并了一批高价值修复：输入框退格恢复正常、鼠标点击后 `j/k` 仍可导航、用户名支持 `@` 和 `:`、列表别名对齐更稳定
+
 ---
 
 Lazyssh is a terminal-based, interactive SSH manager inspired by tools like lazydocker and k9s — but built for managing your fleet of servers directly from your terminal.
@@ -247,4 +256,3 @@ If you find Lazyssh useful, please consider giving the repo a **star** ⭐️ an
 
 - Built with [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell).
 - Inspired by [k9s](https://github.com/derailed/k9s) and [lazydocker](https://github.com/jesseduffield/lazydocker).
-
