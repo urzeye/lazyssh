@@ -181,3 +181,8 @@ func (r *Repository) SetPinned(alias string, pinned bool) error {
 func (r *Repository) RecordSSH(alias string) error {
 	return r.metadataManager.recordSSH(alias)
 }
+
+// GetConfigFile returns the SSH config file path used by this repository.
+func (r *Repository) GetConfigFile() string {
+	return r.configPath
+}

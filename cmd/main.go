@@ -28,8 +28,9 @@ import (
 )
 
 var (
-	version   = "develop"
-	gitCommit = "unknown"
+	version       = "develop"
+	gitCommit     = "unknown"
+	sshConfigFile string
 )
 
 func main() {
@@ -48,7 +49,9 @@ func main() {
 		//nolint:gocritic // exitAfterDefer: ensure immediate exit on unrecoverable error
 		os.Exit(1)
 	}
-	sshConfigFile := filepath.Join(home, ".ssh", "config")
+	if sshConfigFile == "" {
+		sshConfigFile = filepath.Join(home, ".ssh", "config")
+	}
 	metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
 
 	serverRepo := ssh_config_file.NewRepository(log, sshConfigFile, metaDataFile)
@@ -62,6 +65,7 @@ func main() {
 			return tui.Run()
 		},
 	}
+	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", "path to ssh config file (default: ~/.ssh/config)")
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {
