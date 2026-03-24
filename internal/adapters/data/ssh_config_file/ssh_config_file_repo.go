@@ -133,7 +133,7 @@ func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server)
 	if server.Alias != newServer.Alias {
 		newPatterns := make([]*ssh_config.Pattern, 0, len(host.Patterns))
 		for _, pattern := range host.Patterns {
-			if pattern.Str == server.Alias {
+			if normalizeHostAlias(pattern.String()) == server.Alias {
 				newPatterns = append(newPatterns, &ssh_config.Pattern{Str: newServer.Alias})
 			} else {
 				newPatterns = append(newPatterns, pattern)

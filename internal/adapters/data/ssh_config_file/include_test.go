@@ -17,6 +17,7 @@ package ssh_config_file
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Adembc/lazyssh/internal/core/domain"
@@ -136,5 +137,139 @@ func TestAddServerRejectsAliasFromIncludedConfig(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("AddServer() error = nil, want duplicate alias error")
+	}
+}
+
+func TestListServersAppliesInheritedValuesFromPatternHosts(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config")
+	metadataPath := filepath.Join(tempDir, "metadata.json")
+
+	config := `Host lab-serv1
+    HostName 10.10.0.1
+    User admin
+
+Host lab-serv2
+    HostName 10.10.0.2
+
+Host lab-*
+    User user123
+    ProxyJump jumper1
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), configPath, metadataPath)
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+
+	byAlias := make(map[string]domain.Server, len(servers))
+	for _, server := range servers {
+		byAlias[server.Alias] = server
+	}
+
+	if byAlias["lab-serv1"].User != "admin" {
+		t.Fatalf("lab-serv1 User = %q, want %q", byAlias["lab-serv1"].User, "admin")
+	}
+	if byAlias["lab-serv1"].ProxyJump != "jumper1" {
+		t.Fatalf("lab-serv1 ProxyJump = %q, want %q", byAlias["lab-serv1"].ProxyJump, "jumper1")
+	}
+	if byAlias["lab-serv2"].User != "user123" {
+		t.Fatalf("lab-serv2 User = %q, want %q", byAlias["lab-serv2"].User, "user123")
+	}
+	if byAlias["lab-serv2"].ProxyJump != "jumper1" {
+		t.Fatalf("lab-serv2 ProxyJump = %q, want %q", byAlias["lab-serv2"].ProxyJump, "jumper1")
+	}
+}
+
+func TestListServersAppliesRootDefaultsToIncludedHosts(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config")
+	metadataPath := filepath.Join(tempDir, "metadata.json")
+	confDir := filepath.Join(tempDir, "config.d")
+
+	if err := os.MkdirAll(confDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", confDir, err)
+	}
+
+	mainConfig := `Host *
+    User shared-user
+    ProxyJump gateway
+
+Include config.d/*.conf
+`
+	if err := os.WriteFile(configPath, []byte(mainConfig), 0o600); err != nil {
+		t.Fatalf("write main config: %v", err)
+	}
+
+	includedConfig := `Host app-server
+    HostName 10.20.0.5
+`
+	if err := os.WriteFile(filepath.Join(confDir, "01-app.conf"), []byte(includedConfig), 0o600); err != nil {
+		t.Fatalf("write included config: %v", err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), configPath, metadataPath)
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+
+	if len(servers) != 1 {
+		t.Fatalf("ListServers() returned %d servers, want 1", len(servers))
+	}
+
+	server := servers[0]
+	if server.Alias != "app-server" {
+		t.Fatalf("server Alias = %q, want %q", server.Alias, "app-server")
+	}
+	if server.User != "shared-user" {
+		t.Fatalf("server User = %q, want %q", server.User, "shared-user")
+	}
+	if server.ProxyJump != "gateway" {
+		t.Fatalf("server ProxyJump = %q, want %q", server.ProxyJump, "gateway")
+	}
+}
+
+func TestQuotedAliasesAreNormalizedForListingAndDelete(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config")
+	metadataPath := filepath.Join(tempDir, "metadata.json")
+
+	config := `Host "TEST-Testing"
+    HostName 172.16.1.1
+    User root
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), configPath, metadataPath)
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("ListServers() returned %d servers, want 1", len(servers))
+	}
+
+	server := servers[0]
+	if server.Alias != "TEST-Testing" {
+		t.Fatalf("server Alias = %q, want %q", server.Alias, "TEST-Testing")
+	}
+
+	if err := repo.DeleteServer(server); err != nil {
+		t.Fatalf("DeleteServer() error = %v", err)
+	}
+
+	configAfterDelete, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config after delete: %v", err)
+	}
+	if strings.Contains(string(configAfterDelete), "TEST-Testing") {
+		t.Fatalf("quoted alias host should be removed from config\n%s", string(configAfterDelete))
 	}
 }

@@ -23,16 +23,91 @@ import (
 	"github.com/kevinburke/ssh_config"
 )
 
+var effectiveSingleValueKeys = []string{
+	"HostName",
+	"User",
+	"Port",
+	"ProxyCommand",
+	"ProxyJump",
+	"RemoteCommand",
+	"RequestTTY",
+	"SessionType",
+	"ConnectTimeout",
+	"ConnectionAttempts",
+	"BindAddress",
+	"BindInterface",
+	"AddressFamily",
+	"ExitOnForwardFailure",
+	"IPQoS",
+	"CanonicalizeHostname",
+	"CanonicalDomains",
+	"CanonicalizeFallbackLocal",
+	"CanonicalizeMaxDots",
+	"CanonicalizePermittedCNAMEs",
+	"ClearAllForwardings",
+	"GatewayPorts",
+	"ForwardAgent",
+	"ForwardX11",
+	"ForwardX11Trusted",
+	"PubkeyAuthentication",
+	"PubkeyAcceptedAlgorithms",
+	"PubkeyAcceptedKeyTypes",
+	"HostbasedAcceptedAlgorithms",
+	"HostbasedKeyTypes",
+	"HostbasedAcceptedKeyTypes",
+	"PasswordAuthentication",
+	"PreferredAuthentications",
+	"IdentitiesOnly",
+	"AddKeysToAgent",
+	"IdentityAgent",
+	"KbdInteractiveAuthentication",
+	"ChallengeResponseAuthentication",
+	"NumberOfPasswordPrompts",
+	"ControlMaster",
+	"ControlPath",
+	"ControlPersist",
+	"ServerAliveInterval",
+	"ServerAliveCountMax",
+	"Compression",
+	"TCPKeepAlive",
+	"BatchMode",
+	"StrictHostKeyChecking",
+	"CheckHostIP",
+	"FingerprintHash",
+	"UserKnownHostsFile",
+	"HostKeyAlgorithms",
+	"MACs",
+	"Ciphers",
+	"KexAlgorithms",
+	"VerifyHostKeyDNS",
+	"UpdateHostKeys",
+	"HashKnownHosts",
+	"VisualHostKey",
+	"LocalCommand",
+	"PermitLocalCommand",
+	"EscapeChar",
+	"LogLevel",
+}
+
+var effectiveMultiValueKeys = []string{
+	"IdentityFile",
+	"LocalForward",
+	"RemoteForward",
+	"DynamicForward",
+	"SendEnv",
+	"SetEnv",
+}
+
 // toDomainServersFromConfig converts a parsed SSH config into domain servers and
 // records where each server came from so the UI can protect include-managed
 // entries from destructive edits.
-func (r *Repository) toDomainServersFromConfig(cfg *ssh_config.Config, sourceFile string, readonly bool) []domain.Server {
+func (r *Repository) toDomainServersFromConfig(cfg *ssh_config.Config, effectiveCfg *ssh_config.Config, sourceFile string, readonly bool) []domain.Server {
 	servers := make([]domain.Server, 0, len(cfg.Hosts))
 	for _, host := range cfg.Hosts {
 		aliases := make([]string, 0, len(host.Patterns))
 
 		for _, pattern := range host.Patterns {
-			alias := pattern.String()
+			alias := normalizeHostAlias(pattern.String())
 			// Skip if alias contains wildcards (not a concrete Host)
 			if strings.ContainsAny(alias, "!*?[]") {
 				continue
@@ -51,19 +126,59 @@ func (r *Repository) toDomainServersFromConfig(cfg *ssh_config.Config, sourceFil
 			Readonly:      readonly,
 		}
 
-		for _, node := range host.Nodes {
-			kvNode, ok := node.(*ssh_config.KV)
-			if !ok {
-				continue
+		if effectiveCfg != nil {
+			if err := r.applyEffectiveConfig(&server, effectiveCfg); err != nil {
+				r.logger.Warnf("failed to apply effective config for %s: %v", server.Alias, err)
+				r.applyHostNodes(&server, host)
 			}
-
-			r.mapKVToServer(&server, kvNode)
+		} else {
+			r.applyHostNodes(&server, host)
 		}
 
 		servers = append(servers, server)
 	}
 
 	return servers
+}
+
+func (r *Repository) applyHostNodes(server *domain.Server, host *ssh_config.Host) {
+	for _, node := range host.Nodes {
+		kvNode, ok := node.(*ssh_config.KV)
+		if !ok {
+			continue
+		}
+
+		r.mapKVToServer(server, kvNode)
+	}
+}
+
+func (r *Repository) applyEffectiveConfig(server *domain.Server, cfg *ssh_config.Config) error {
+	for _, key := range effectiveSingleValueKeys {
+		value, err := cfg.Get(server.Alias, key)
+		if err != nil {
+			return err
+		}
+		if value == "" {
+			continue
+		}
+		r.mapKVToServer(server, &ssh_config.KV{Key: key, Value: value})
+	}
+
+	for _, key := range effectiveMultiValueKeys {
+		values, err := cfg.GetAll(server.Alias, key)
+		if err != nil {
+			return err
+		}
+		for _, value := range values {
+			r.mapKVToServer(server, &ssh_config.KV{Key: key, Value: value})
+		}
+	}
+
+	return nil
+}
+
+func normalizeHostAlias(alias string) string {
+	return strings.TrimSpace(unquote(strings.TrimSpace(alias)))
 }
 
 // mapKVToServer maps an ssh_config.KV node to the corresponding fields in domain.Server.

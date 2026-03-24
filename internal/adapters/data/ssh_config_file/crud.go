@@ -77,8 +77,9 @@ func (r *Repository) findHostByAlias(cfg *ssh_config.Config, alias string) *ssh_
 
 // hostContainsPattern checks if a host contains a specific pattern.
 func (r *Repository) hostContainsPattern(host *ssh_config.Host, target string) bool {
+	target = normalizeHostAlias(target)
 	for _, pattern := range host.Patterns {
-		if pattern.String() == target {
+		if normalizeHostAlias(pattern.String()) == target {
 			return true
 		}
 	}

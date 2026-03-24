@@ -42,6 +42,11 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 	visited := map[string]struct{}{mainPath: {}}
 	paths := []string{mainPath}
 
+	rootCfg, err := r.decodeConfigAt(mainPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode main config: %w", err)
+	}
+
 	includePaths, err := r.resolveIncludes(mainPath, visited)
 	if err != nil {
 		r.logger.Warnf("failed to resolve includes for %s: %v", mainPath, err)
@@ -61,7 +66,7 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 			continue
 		}
 
-		current := r.toDomainServersFromConfig(cfg, path, path != writablePath)
+		current := r.toDomainServersFromConfig(cfg, rootCfg, path, path != writablePath)
 		for _, server := range current {
 			if aliasesAlreadySeen(seenAliases, server.Aliases) {
 				continue
