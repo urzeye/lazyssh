@@ -19,7 +19,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Check existing release
+        id: release_check
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${GITHUB_REF_NAME} already exists, skipping GoReleaser."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Run GoReleaser
+        if: steps.release_check.outputs.exists != 'true'
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
