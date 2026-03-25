@@ -1,79 +1,81 @@
+English | [简体中文](README.zh-CN.md)
+
 <div align="center">
   <img src="./docs/logo.png" alt="lazyssh logo" width="600" height="600"/>
 </div>
 
-这是基于原版 `lazyssh` 的增强版本，目前主要补充了这些能力：
+This repository is an enhanced fork of the original `lazyssh`, with a strong focus on real-world SSH setups used with dotfiles, `Include`, and multi-file config workflows. Key improvements include:
 
-- 支持递归读取 `Include` / `conf.d` 形式的 SSH 配置，不再局限于单一 `~/.ssh/config`
-- 支持 managed 模式：从 root config 实时读取完整配置树，同时只把新增 / 修改写回指定的 managed 文件
-- 对来自 include 文件或其他非托管文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
-- 新增 `--sshconfig`、`--managed-mode`、`--managed-sshconfig` 参数，适合和 `config.local` / `conf.d` 工作流配合
-- 现在会展示主机“最终生效”的 SSH 配置值，`Host *`、`Host lab-*` 这类模式规则以及 root config 的默认项也会正确体现在列表和详情中
-- 兼容带引号的 `Host "example-name"` 条目，避免因为别名格式导致列表展示、删除或连接行为异常
-- 搜索改为更实用的模糊相关性排序，按别名、主机、用户、标签综合匹配
-- 增强了日常使用体验：可折叠搜索栏、`0/1/2` 面板切换、复制 Host、记住排序方式
-- 合并了一批高价值修复：输入框退格恢复正常、鼠标点击后 `j/k` 仍可导航、用户名支持 `@` 和 `:`、列表别名对齐更稳定
-- 配置写回更适合 dotfiles / 多机同步：保留符号链接不被写坏，`IdentityFile` 会尽量写成 `~/.ssh/...` 这种可移植格式
-
----
-
-lazyssh 是一个运行在终端中的交互式 SSH 管理器，灵感来自 `lazydocker` 和 `k9s`，但专门服务于 SSH 主机管理。
-借助 lazyssh，你可以直接在终端里浏览、搜索、连接、编辑和整理 `~/.ssh/config` 中定义的服务器，无需再记忆 IP 地址，也不用频繁手敲长串 `ssh` / `scp` 命令，一切都围绕高效的键盘工作流展开。
+- Recursive support for `Include` and `conf.d` style SSH layouts instead of assuming a single `~/.ssh/config`
+- Managed mode: read the full config tree from the root config in real time while writing changes only to a dedicated managed file
+- Read-only protection for hosts coming from included or unmanaged files, with source markers in the UI to prevent accidental edits
+- New flags: `--sshconfig`, `--managed-mode`, and `--managed-sshconfig`
+- Display of effective SSH values after applying `Host *`, pattern rules such as `Host lab-*`, and defaults inherited from the root config
+- Proper handling of quoted entries such as `Host "example-name"`
+- Better fuzzy search relevance across alias, hostname, user, and tags
+- Daily workflow improvements such as a collapsible search bar, `0/1/2` panel switching, copy-host support, and persisted sort mode
+- A set of high-value fixes: backspace works correctly in inputs, `j/k` navigation survives mouse clicks, usernames support `@` and `:`, and alias alignment is more stable
+- Safer config writes for dotfiles and multi-machine sync: symlinks are preserved and `IdentityFile` is normalized to portable `~/.ssh/...` paths whenever possible
 
 ---
 
-## ✨ 功能特性
-
-### 主机管理
-- 从 `~/.ssh/config` 中读取并展示主机列表，支持滚动浏览
-- 在 UI 中直接新增主机，覆盖常见 SSH 配置项
-- 通过分标签页表单编辑已有主机配置
-- 安全删除主机条目
-- 支持置顶 / 取消置顶，便于固定常用主机
-- 支持对主机执行 `ping`，快速判断在线状态
-
-### 快速导航
-- 支持按别名、IP、用户或标签进行模糊搜索
-- 选中主机后按回车即可直接 SSH 登录
-- 支持用标签组织主机，例如 `prod`、`dev`、`test`
-- 支持按别名或最近连接时间排序，并可反转排序方向
-
-### 高级 SSH 配置
-- 支持端口转发：`LocalForward`、`RemoteForward`、`DynamicForward`
-- 支持连接复用，加快后续连接速度
-- 支持高级认证方式，例如公钥、密码、Agent Forwarding
-- 支持安全相关配置，例如加密算法、MAC、密钥交换算法
-- 支持代理配置，例如 `ProxyJump`、`ProxyCommand`
-- 通过标签页组织大量 SSH 选项，编辑更清晰
-
-### 密钥管理
-- 自动发现本地 SSH 密钥，并提供自动补全
-- 支持在多把密钥之间快速选择
-
-### 计划中的能力
-- 在本地与远端主机之间复制文件，并提供更友好的选择界面
-- SSH 公钥部署能力：
-  - 使用默认本地公钥，例如 `~/.ssh/id_ed25519.pub` 或 `~/.ssh/id_rsa.pub`
-  - 手动粘贴自定义公钥
-  - 生成新的密钥对并部署到目标主机
-  - 自动追加到 `~/.ssh/authorized_keys`，并处理正确权限
+lazyssh is a terminal-based SSH manager inspired by `lazydocker` and `k9s`, but built specifically for SSH host management.
+It lets you browse, search, connect to, edit, and organize the hosts defined in your SSH config directly from the terminal, so you do not have to remember raw IP addresses or keep typing long `ssh` and `scp` commands by hand. The whole workflow is designed around fast keyboard-first operations.
 
 ---
 
-## 🔐 安全说明
+## ✨ Features
 
-lazyssh 不会引入额外的安全风险。
-它本质上只是对你现有 SSH 配置的一层 TUI / UI 封装。
+### Host Management
+- Read and display hosts from `~/.ssh/config`
+- Add new hosts directly from the UI
+- Edit existing hosts through a tabbed form
+- Delete host entries safely
+- Pin and unpin frequently used hosts
+- Ping hosts to check whether they are reachable
 
-- 所有 SSH 连接都通过系统自带的 `ssh` 二进制程序执行，也就是 OpenSSH
-- lazyssh 不会存储、传输或修改你的私钥、密码或其他凭据
-- 你已有的 `IdentityFile` 路径和 `ssh-agent` 工作流都可以照常使用
-- lazyssh 只会读取并更新你的 SSH 配置文件；在首次修改前会自动创建备份
-- 它会尽量保留原有文件权限，避免因为写回配置带来额外风险
+### Fast Navigation
+- Fuzzy search by alias, IP, user, or tag
+- Press `Enter` to connect to the selected host immediately
+- Organize hosts with tags such as `prod`, `dev`, and `test`
+- Sort by alias or last connection time, with reversible order
+
+### Advanced SSH Options
+- Port forwarding support: `LocalForward`, `RemoteForward`, and `DynamicForward`
+- Connection multiplexing for faster follow-up sessions
+- Advanced authentication settings, including keys, passwords, and agent forwarding
+- Security-related settings such as ciphers, MACs, and key exchange algorithms
+- Proxy settings such as `ProxyJump` and `ProxyCommand`
+- A tabbed editor that keeps large SSH configurations manageable
+
+### Key Management
+- Auto-discover local SSH keys with completion support
+- Switch between multiple keys quickly
+
+### Planned Capabilities
+- File copy flows between the local machine and remote hosts with a friendlier picker
+- SSH public key deployment:
+  - Use a default local key such as `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub`
+  - Paste a custom public key manually
+  - Generate a new key pair and deploy it to the target host
+  - Append it to `~/.ssh/authorized_keys` with the correct permissions
+
+---
+
+## 🔐 Security
+
+lazyssh does not introduce extra security risk on its own.
+It is fundamentally a TUI layer on top of your existing SSH setup.
+
+- All SSH connections are executed through the system `ssh` binary, i.e. OpenSSH
+- lazyssh does not store, transmit, or modify your private keys, passwords, or other credentials
+- Existing `IdentityFile` paths and `ssh-agent` workflows continue to work as usual
+- lazyssh only reads and updates your SSH config files, and automatically creates backups before the first modification
+- It tries to preserve existing file permissions to avoid introducing new risk during config writes
 
 ## 🧭 Managed Mode
 
-如果你的 SSH 配置结构类似这样：
+If your SSH setup looks like this:
 
 ```sshconfig
 Include ~/.orbstack/ssh/config
@@ -81,7 +83,7 @@ Include ~/.ssh/config.d/*.conf
 Include ~/.ssh/config.local
 ```
 
-可以让 lazyssh 进入 managed 模式：
+you can run lazyssh in managed mode:
 
 ```bash
 lazyssh \
@@ -90,145 +92,145 @@ lazyssh \
   --managed-sshconfig ~/.ssh/config.local
 ```
 
-这个模式下：
+In this mode:
 
-- `--sshconfig` 指向 root config，lazyssh 会按它递归读取完整 `Include` 树
-- `--managed-sshconfig` 指向真正可写的文件，例如 `~/.ssh/config.local`
-- 来自 root config、`config.d`、OrbStack 或其他 include 文件的条目会显示为只读
-- 只有来自 managed 文件的主机可以被新增、编辑、删除
-- 通过 `Host *`、`Host xxx-*` 等模式继承到的最终配置值，也会正确显示在界面中
-- SSH 连接和端口转发仍然继续使用 root config，因此和系统里的 `ssh` 行为保持一致
+- `--sshconfig` points to the root config, and lazyssh recursively reads the full `Include` tree from it
+- `--managed-sshconfig` points to the actual writable file, such as `~/.ssh/config.local`
+- Entries coming from the root config, `config.d`, OrbStack, or any other included file are shown as read-only
+- Only hosts defined in the managed file can be added, edited, or deleted
+- Effective values inherited through `Host *`, `Host xxx-*`, and similar patterns are rendered correctly in the UI
+- SSH connections and forwarding still use the root config, so behavior stays aligned with the system `ssh` command
 
-## 🛡️ 配置安全：非破坏性写入与自动备份
+## 🛡️ Safe Writes and Automatic Backups
 
-- 非破坏性编辑：lazyssh 只写入必要的最小变更，并尽可能保留原有注释、空行、顺序和未触碰的配置项
-- 原子写入：更新先写入临时文件，再原子替换原文件，尽量降低部分写入导致配置损坏的风险
-- 符号链接安全：如果受管配置文件本身是 symlink，lazyssh 会更新其目标文件而不是把 symlink 覆盖成普通文件
-- 首次备份：第一次修改某个受管 SSH 配置文件前，会在同目录生成一份 `<文件名>.original.backup`，例如 `config.original.backup` 或 `config.local.original.backup`
-- 滚动备份：每次后续保存时，还会生成一份带时间戳的备份，例如 `~/.ssh/config.local-<timestamp>-lazyssh.backup`
-- 备份轮换：应用最多保留 10 份滚动备份，超出的旧备份会自动清理
-- 路径可移植性：位于当前用户 home 目录下的 `IdentityFile`，写回时会优先规范成 `~/.ssh/...`，更适合跨平台同步 dotfiles
+- Non-destructive edits: lazyssh writes only the smallest required change set and tries to preserve comments, blank lines, ordering, and untouched fields
+- Atomic writes: updates are written to a temporary file first and then atomically replaced to reduce the risk of partial writes
+- Symlink-safe behavior: if the managed config file itself is a symlink, lazyssh updates the target file instead of overwriting the symlink
+- First-write backup: before the first modification of a managed SSH config file, lazyssh creates a sibling backup such as `config.original.backup` or `config.local.original.backup`
+- Rolling backups: every later save also creates a timestamped backup such as `~/.ssh/config.local-<timestamp>-lazyssh.backup`
+- Backup rotation: up to 10 rolling backups are kept automatically, and older ones are cleaned up
+- Portable paths: `IdentityFile` entries inside the current user's home directory are normalized to `~/.ssh/...` when written back, which is friendlier for cross-machine dotfile sync
 
-## 📷 截图预览
+## 📷 Screenshots
 
 <div align="center">
 
-### 🚀 启动画面
-<img src="./docs/loader.png" alt="应用启动界面" width="800" />
+### 🚀 Startup Screen
+<img src="./docs/loader.png" alt="Startup screen" width="800" />
 
-应用启动时的加载页面
-
----
-
-### 📋 主机管理面板
-<img src="./docs/list server.png" alt="主机列表视图" width="900" />
-
-主界面会展示所有已配置主机，包括状态信息、置顶主机和便捷导航能力
+The loading screen shown when the application starts.
 
 ---
 
-### 🔎 搜索
-<img src="./docs/search.png" alt="模糊搜索主机" width="900" />
+### 📋 Host Management Panel
+<img src="./docs/list server.png" alt="Host list view" width="900" />
 
-可按主机名、IP 地址、用户或标签快速检索目标主机
-
----
-
-### ➕ 新增 / 编辑主机
-<img src="./docs/add server.png" alt="新增主机界面" width="900" />
-
-通过分标签页界面管理 SSH 连接，主要包括：
-
-- **基础信息**：主机、用户、端口、密钥、标签
-- **连接设置**：代理、超时、连接复用、规范化
-- **转发设置**：端口转发、X11、Agent
-- **认证设置**：密钥、密码、认证方式、算法选项
-- **高级设置**：安全、加密、环境变量、调试选项
+The main view shows configured hosts, status information, pinned entries, and quick navigation actions.
 
 ---
 
-### 🔐 连接主机
-<img src="./docs/ssh.png" alt="SSH 连接详情" width="900" />
+### 🔎 Search
+<img src="./docs/search.png" alt="Fuzzy host search" width="900" />
 
-直接从界面发起 SSH 连接
+Search quickly by hostname, IP address, user, or tag.
+
+---
+
+### ➕ Add / Edit Hosts
+<img src="./docs/add server.png" alt="Add host screen" width="900" />
+
+The tabbed editor is organized around common SSH workflows:
+
+- **Basics**: host, user, port, key, and tags
+- **Connection**: proxies, timeout, multiplexing, and canonicalization
+- **Forwarding**: port forwarding, X11, and agent forwarding
+- **Authentication**: keys, passwords, auth methods, and algorithm options
+- **Advanced**: security, encryption, environment variables, and debug options
+
+---
+
+### 🔐 Connect to Hosts
+<img src="./docs/ssh.png" alt="SSH connection view" width="900" />
+
+Start an SSH session directly from the interface.
 
 </div>
 
 ---
 
-## 📦 安装
+## 📦 Installation
 
-### 方式一：使用 mise 安装（推荐）
+### Option 1: Install with mise (Recommended)
 
-如果你已经安装了 `mise`，在本仓库发布 Release 后，可以直接通过 GitHub Release 资产安装：
+If you already use `mise`, you can install lazyssh directly from this repository's GitHub Releases:
 
 ```bash
 mise use -g github:urzeye/lazyssh@latest
 lazyssh
 ```
 
-如果你希望固定某个版本，也可以显式指定版本号：
+If you want to pin a specific release, specify the version explicitly:
 
 ```bash
 mise use -g github:urzeye/lazyssh@0.x.y
 ```
 
-说明：
+Notes:
 
-- 这里使用的是 `mise` 的 `github:` backend，会直接从 `urzeye/lazyssh` 的 Release 下载对应平台的二进制包
-- `mise` 会把版本写入全局配置，后续在任意终端里都可以直接使用 `lazyssh`
+- This uses the `github:` backend in `mise`, which downloads the matching release asset from `urzeye/lazyssh`
+- `mise` writes the selected version into your global config, so `lazyssh` becomes available in all terminals afterward
 
-### 方式二：从源码构建
+### Option 2: Build from Source
 
 ```bash
 git clone https://github.com/urzeye/lazyssh.git
 cd lazyssh
 
-# 构建
+# Build
 make build
 ./bin/lazyssh
 
-# 或直接运行
+# Or run directly
 make run
 ```
 
 ---
 
-## ⌨️ 快捷键
+## ⌨️ Keyboard Shortcuts
 
-| 按键 | 说明 |
+| Key | Action |
 | ---- | ---- |
-| `/` | 展开 / 收起搜索栏 |
-| `↑↓` / `j` `k` | 在主机列表中移动 |
-| `Enter` | SSH 连接到当前选中主机 |
-| `c` | 复制 SSH 命令到剪贴板 |
-| `h` | 复制 Host 到剪贴板 |
-| `g` | Ping 当前主机 |
-| `r` | 刷新后台数据 |
-| `a` | 新增主机 |
-| `e` | 编辑主机 |
-| `t` | 编辑标签 |
-| `d` | 删除主机 |
-| `p` | 置顶 / 取消置顶 |
-| `s` | 切换排序字段 |
-| `S` | 反转排序顺序 |
-| `0` / `1` / `2` | 聚焦搜索栏 / 主机列表 / 详情面板 |
-| `q` | 退出 |
+| `/` | Expand or collapse the search bar |
+| `↑↓` / `j` `k` | Move through the host list |
+| `Enter` | SSH into the selected host |
+| `c` | Copy the SSH command to the clipboard |
+| `h` | Copy the host alias to the clipboard |
+| `g` | Ping the current host |
+| `r` | Refresh background data |
+| `a` | Add a host |
+| `e` | Edit a host |
+| `t` | Edit tags |
+| `d` | Delete a host |
+| `p` | Pin or unpin a host |
+| `s` | Switch the sort field |
+| `S` | Reverse the sort order |
+| `0` / `1` / `2` | Focus the search bar / host list / details panel |
+| `q` | Quit |
 
-**在主机表单中：**
+**Inside host forms:**
 
-| 按键 | 说明 |
+| Key | Action |
 | ---- | ---- |
-| `Ctrl+H` | 切换到上一个标签页 |
-| `Ctrl+L` | 切换到下一个标签页 |
-| `Ctrl+S` | 保存 |
-| `Esc` | 取消 |
+| `Ctrl+H` | Switch to the previous tab |
+| `Ctrl+L` | Switch to the next tab |
+| `Ctrl+S` | Save |
+| `Esc` | Cancel |
 
-提示：列表顶部的提示栏会显示最常用的快捷键，方便随时查看。
+Tip: the hint area at the top of the list shows the most common shortcuts so they are easy to rediscover.
 
 ---
 
-## 🙏 致谢
+## 🙏 Credits
 
-- 基于 [tview](https://github.com/rivo/tview) 与 [tcell](https://github.com/gdamore/tcell) 构建
-- 设计灵感来自 [k9s](https://github.com/derailed/k9s) 和 [lazydocker](https://github.com/jesseduffield/lazydocker)
+- Built with [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell)
+- Design inspiration from [k9s](https://github.com/derailed/k9s) and [lazydocker](https://github.com/jesseduffield/lazydocker)
