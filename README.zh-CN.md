@@ -4,7 +4,7 @@
   <img src="./docs/logo.png" alt="lazyssh logo" width="600" height="600"/>
 </div>
 
-这是基于原版 `lazyssh` 的增强版本，目前主要补充了这些能力：
+这是基于原项目 [`lazyssh`](https://github.com/Adembc/lazyssh) 的增强版本，目前主要补充了这些能力：
 
 - 支持递归读取 `Include` / `conf.d` 形式的 SSH 配置，不再局限于单一 `~/.ssh/config`
 - 支持 managed 模式：从 root config 实时读取完整配置树，同时只把新增 / 修改写回指定的 managed 文件
@@ -232,5 +232,6 @@ make run
 
 ## 🙏 致谢
 
+- 感谢原项目 [`lazyssh`](https://github.com/Adembc/lazyssh) 的作者与维护者，为这个 fork 提供了坚实的基础
 - 基于 [tview](https://github.com/rivo/tview) 与 [tcell](https://github.com/gdamore/tcell) 构建
 - 设计灵感来自 [k9s](https://github.com/derailed/k9s) 和 [lazydocker](https://github.com/jesseduffield/lazydocker)

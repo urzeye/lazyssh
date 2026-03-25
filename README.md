@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
   <img src="./docs/logo.png" alt="lazyssh logo" width="600" height="600"/>
 </div>
 
-This repository is an enhanced fork of the original `lazyssh`, with a strong focus on real-world SSH setups used with dotfiles, `Include`, and multi-file config workflows. Key improvements include:
+This repository is an enhanced fork of the original [`lazyssh`](https://github.com/Adembc/lazyssh), with a strong focus on real-world SSH setups used with dotfiles, `Include`, and multi-file config workflows. Key improvements include:
 
 - Recursive support for `Include` and `conf.d` style SSH layouts instead of assuming a single `~/.ssh/config`
 - Managed mode: read the full config tree from the root config in real time while writing changes only to a dedicated managed file
@@ -232,5 +232,6 @@ Tip: the hint area at the top of the list shows the most common shortcuts so the
 
 ## 🙏 Credits
 
+- Special thanks to the original [`lazyssh`](https://github.com/Adembc/lazyssh) project and its author/maintainers for creating the foundation this fork builds on
 - Built with [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell)
 - Design inspiration from [k9s](https://github.com/derailed/k9s) and [lazydocker](https://github.com/jesseduffield/lazydocker)
