@@ -8,9 +8,12 @@
 - 支持 managed 模式：从 root config 实时读取完整配置树，同时只把新增 / 修改写回指定的 managed 文件
 - 对来自 include 文件或其他非托管文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
 - 新增 `--sshconfig`、`--managed-mode`、`--managed-sshconfig` 参数，适合和 `config.local` / `conf.d` 工作流配合
+- 现在会展示主机“最终生效”的 SSH 配置值，`Host *`、`Host lab-*` 这类模式规则以及 root config 的默认项也会正确体现在列表和详情中
+- 兼容带引号的 `Host "example-name"` 条目，避免因为别名格式导致列表展示、删除或连接行为异常
 - 搜索改为更实用的模糊相关性排序，按别名、主机、用户、标签综合匹配
 - 增强了日常使用体验：可折叠搜索栏、`0/1/2` 面板切换、复制 Host、记住排序方式
 - 合并了一批高价值修复：输入框退格恢复正常、鼠标点击后 `j/k` 仍可导航、用户名支持 `@` 和 `:`、列表别名对齐更稳定
+- 配置写回更适合 dotfiles / 多机同步：保留符号链接不被写坏，`IdentityFile` 会尽量写成 `~/.ssh/...` 这种可移植格式
 
 ---
 
@@ -93,15 +96,18 @@ lazyssh \
 - `--managed-sshconfig` 指向真正可写的文件，例如 `~/.ssh/config.local`
 - 来自 root config、`config.d`、OrbStack 或其他 include 文件的条目会显示为只读
 - 只有来自 managed 文件的主机可以被新增、编辑、删除
+- 通过 `Host *`、`Host xxx-*` 等模式继承到的最终配置值，也会正确显示在界面中
 - SSH 连接和端口转发仍然继续使用 root config，因此和系统里的 `ssh` 行为保持一致
 
 ## 🛡️ 配置安全：非破坏性写入与自动备份
 
 - 非破坏性编辑：lazyssh 只写入必要的最小变更，并尽可能保留原有注释、空行、顺序和未触碰的配置项
 - 原子写入：更新先写入临时文件，再原子替换原文件，尽量降低部分写入导致配置损坏的风险
+- 符号链接安全：如果受管配置文件本身是 symlink，lazyssh 会更新其目标文件而不是把 symlink 覆盖成普通文件
 - 首次备份：第一次修改某个受管 SSH 配置文件前，会在同目录生成一份 `<文件名>.original.backup`，例如 `config.original.backup` 或 `config.local.original.backup`
 - 滚动备份：每次后续保存时，还会生成一份带时间戳的备份，例如 `~/.ssh/config.local-<timestamp>-lazyssh.backup`
 - 备份轮换：应用最多保留 10 份滚动备份，超出的旧备份会自动清理
+- 路径可移植性：位于当前用户 home 目录下的 `IdentityFile`，写回时会优先规范成 `~/.ssh/...`，更适合跨平台同步 dotfiles
 
 ## 📷 截图预览
 
