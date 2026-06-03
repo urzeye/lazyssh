@@ -15,6 +15,8 @@
 package ui
 
 import (
+	"strings"
+
 	"go.uber.org/zap"
 
 	"github.com/rivo/tview"
@@ -50,6 +52,20 @@ type tui struct {
 	themeMode     ThemeMode
 	searchVisible bool
 }
+
+type mainUIState struct {
+	query         string
+	selectedAlias string
+	selectedIndex int
+	searchVisible bool
+	focus         string
+}
+
+const (
+	focusSearch     = "search"
+	focusServerList = "server-list"
+	focusDetails    = "details"
+)
 
 func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string) App {
 	return &tui{
@@ -158,8 +174,14 @@ func (t *tui) bindEvents() {
 }
 
 func (t *tui) loadInitialData() {
-	servers, _ := t.serverService.ListServers("")
-	sortServersForUI(servers, t.sortMode)
+	t.loadServerList("")
+}
+
+func (t *tui) loadServerList(query string) {
+	servers, _ := t.serverService.ListServers(query)
+	if strings.TrimSpace(query) == "" {
+		sortServersForUI(servers, t.sortMode)
+	}
 	t.updateListTitle()
 	t.serverList.UpdateServers(servers)
 }
@@ -191,9 +213,81 @@ func (t *tui) persistThemeMode() {
 }
 
 func (t *tui) rebuildMainUI() {
+	state := t.captureMainUIState()
 	t.initializeTheme().buildComponents().buildLayout().bindEvents()
-	t.loadInitialData()
+	t.restoreMainUIState(state)
 	if t.app != nil {
 		t.app.SetRoot(t.root, true)
+	}
+}
+
+func (t *tui) captureMainUIState() mainUIState {
+	state := mainUIState{selectedIndex: -1}
+	if t.searchBar != nil {
+		state.query = t.searchBar.GetText()
+	}
+	if t.serverList != nil {
+		state.selectedIndex = t.serverList.GetCurrentItem()
+		if server, ok := t.serverList.GetSelectedServer(); ok {
+			state.selectedAlias = server.Alias
+		}
+	}
+	state.searchVisible = t.searchVisible
+
+	if t.app != nil {
+		focus := t.app.GetFocus()
+		switch {
+		case focus == t.searchBar:
+			state.focus = focusSearch
+		case t.isServerListFocused():
+			state.focus = focusServerList
+		case focus == t.details:
+			state.focus = focusDetails
+		}
+	}
+
+	return state
+}
+
+func (t *tui) restoreMainUIState(state mainUIState) {
+	if state.searchVisible {
+		t.showSearchBar()
+	}
+	if t.searchBar != nil && state.query != "" {
+		t.searchBar.SetText(state.query)
+	}
+
+	t.loadServerList(state.query)
+	t.restoreSelectedServer(state)
+	t.restoreFocus(state)
+}
+
+func (t *tui) restoreSelectedServer(state mainUIState) {
+	if t.serverList == nil {
+		return
+	}
+	if state.selectedAlias != "" && t.serverList.SelectServerByAlias(state.selectedAlias) {
+		return
+	}
+	_ = t.serverList.SelectIndex(state.selectedIndex)
+}
+
+func (t *tui) restoreFocus(state mainUIState) {
+	if t.app == nil {
+		return
+	}
+	switch state.focus {
+	case focusSearch:
+		if t.searchVisible && t.searchBar != nil {
+			t.app.SetFocus(t.searchBar)
+		}
+	case focusDetails:
+		if t.details != nil {
+			t.app.SetFocus(t.details)
+		}
+	case focusServerList:
+		if t.serverList != nil {
+			t.app.SetFocus(t.serverList)
+		}
 	}
 }
