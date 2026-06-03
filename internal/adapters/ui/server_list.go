@@ -15,10 +15,10 @@
 package ui
 
 import (
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 type ServerList struct {
@@ -42,11 +42,11 @@ func (sl *ServerList) build() {
 	sl.List.SetBorder(true).
 		SetTitle(" 1 Servers ").
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.Color238).
-		SetTitleColor(tcell.Color250)
+		SetBorderColor(CurrentTheme.Border).
+		SetTitleColor(CurrentTheme.Title)
 	sl.List.
-		SetSelectedBackgroundColor(tcell.Color24).
-		SetSelectedTextColor(tcell.Color255).
+		SetSelectedBackgroundColor(CurrentTheme.SelectedBackground).
+		SetSelectedTextColor(CurrentTheme.SelectedText).
 		SetHighlightFullLine(true)
 
 	sl.List.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {

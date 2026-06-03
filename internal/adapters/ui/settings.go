@@ -29,7 +29,8 @@ type settingsManager struct {
 }
 
 type uiSettings struct {
-	SortMode SortMode `json:"sort_mode,omitempty"`
+	SortMode  SortMode  `json:"sort_mode,omitempty"`
+	ThemeMode ThemeMode `json:"theme_mode,omitempty"`
 }
 
 func newSettingsManager(logger *zap.SugaredLogger) *settingsManager {
@@ -73,6 +74,37 @@ func (m *settingsManager) SaveSortMode(mode SortMode) error {
 	}
 
 	settings.SortMode = mode
+	return m.save(settings)
+}
+
+func (m *settingsManager) LoadThemeMode() (ThemeMode, error) {
+	if m == nil {
+		return ThemeDark, errors.New("nil settings manager")
+	}
+
+	settings, err := m.load()
+	if err != nil {
+		return ThemeDark, err
+	}
+
+	if !settings.ThemeMode.valid() {
+		return ThemeDark, nil
+	}
+
+	return settings.ThemeMode, nil
+}
+
+func (m *settingsManager) SaveThemeMode(mode ThemeMode) error {
+	if m == nil {
+		return errors.New("nil settings manager")
+	}
+
+	settings, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	settings.ThemeMode = mode
 	return m.save(settings)
 }
 

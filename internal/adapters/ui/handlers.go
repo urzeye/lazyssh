@@ -77,6 +77,9 @@ func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	case 'S':
 		t.handleSortReverse()
 		return nil
+	case 'T':
+		t.handleThemeToggle()
+		return nil
 	case 'c':
 		t.handleCopyCommand()
 		return nil
@@ -142,6 +145,13 @@ func (t *tui) handleSortReverse() {
 	t.refreshServerList()
 }
 
+func (t *tui) handleThemeToggle() {
+	t.themeMode = t.themeMode.Toggle()
+	t.persistThemeMode()
+	t.rebuildMainUI()
+	t.showStatusTemp("Theme: " + t.themeMode.String())
+}
+
 func (t *tui) handleCopyCommand() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
 		cmd := BuildSSHCommand(server)
@@ -167,7 +177,7 @@ func (t *tui) handleCopyHost() {
 func (t *tui) handleTagsEdit() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
 		if server.Readonly {
-			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), "#FFCC66")
+			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), CurrentTheme.Warning)
 			return
 		}
 		t.showEditTagsForm(server)
@@ -289,7 +299,7 @@ func (t *tui) handleServerSelectionChange(server domain.Server) {
 
 func (t *tui) handleServerAdd() {
 	if t.serverService.IsReadOnly() {
-		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", "#FFCC66")
+		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", CurrentTheme.Warning)
 		return
 	}
 
@@ -304,7 +314,7 @@ func (t *tui) handleServerAdd() {
 func (t *tui) handleServerEdit() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
 		if server.Readonly {
-			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), "#FFCC66")
+			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), CurrentTheme.Warning)
 			return
 		}
 		form := NewServerForm(ServerFormEdit, &server).
@@ -342,7 +352,7 @@ func (t *tui) handleServerSave(server domain.Server, original *domain.Server) {
 func (t *tui) handleServerDelete() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
 		if server.Readonly {
-			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), "#FF6B6B")
+			t.showStatusTempColor(fmt.Sprintf("Read-only: %s is managed in %s", server.Alias, server.SourceFile), CurrentTheme.Error)
 			return
 		}
 		t.showDeleteConfirmModal(server)
@@ -362,13 +372,13 @@ func (t *tui) handlePingSelected() {
 			up, dur, err := t.serverService.Ping(server)
 			t.app.QueueUpdateDraw(func() {
 				if err != nil {
-					t.showStatusTempColor(fmt.Sprintf("Ping %s: DOWN (%v)", alias, err), "#FF6B6B")
+					t.showStatusTempColor(fmt.Sprintf("Ping %s: DOWN (%v)", alias, err), CurrentTheme.Error)
 					return
 				}
 				if up {
-					t.showStatusTempColor(fmt.Sprintf("Ping %s: UP (%s)", alias, dur), "#A0FFA0")
+					t.showStatusTempColor(fmt.Sprintf("Ping %s: UP (%s)", alias, dur), CurrentTheme.Success)
 				} else {
-					t.showStatusTempColor(fmt.Sprintf("Ping %s: DOWN", alias), "#FF6B6B")
+					t.showStatusTempColor(fmt.Sprintf("Ping %s: DOWN", alias), CurrentTheme.Error)
 				}
 			})
 		}()
@@ -394,7 +404,7 @@ func (t *tui) handleRefreshBackground() {
 		servers, err := t.serverService.ListServers(q)
 		if err != nil {
 			t.app.QueueUpdateDraw(func() {
-				t.showStatusTempColor(fmt.Sprintf("Refresh failed: %v", err), "#FF6B6B")
+				t.showStatusTempColor(fmt.Sprintf("Refresh failed: %v", err), CurrentTheme.Error)
 			})
 			return
 		}
@@ -557,12 +567,12 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 
 	form.AddButton("Start", func() {
 		if err := validatePort(portVal); err != nil {
-			t.showStatusTempColor("Invalid port: "+err.Error(), "#FF6B6B")
+			t.showStatusTempColor("Invalid port: "+err.Error(), CurrentTheme.Error)
 			return
 		}
 		if bindAddrVal != "" {
 			if err := validateBindAddress(bindAddrVal); err != nil {
-				t.showStatusTempColor("Invalid bind address: "+err.Error(), "#FF6B6B")
+				t.showStatusTempColor("Invalid bind address: "+err.Error(), CurrentTheme.Error)
 				return
 			}
 		}
@@ -577,11 +587,11 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 			args = append(args, "-D", spec)
 		} else {
 			if err := validateHost(hostVal); err != nil {
-				t.showStatusTempColor("Invalid host: "+err.Error(), "#FF6B6B")
+				t.showStatusTempColor("Invalid host: "+err.Error(), CurrentTheme.Error)
 				return
 			}
 			if err := validatePort(hostPortVal); err != nil {
-				t.showStatusTempColor("Invalid host port: "+err.Error(), "#FF6B6B")
+				t.showStatusTempColor("Invalid host port: "+err.Error(), CurrentTheme.Error)
 				return
 			}
 			spec := portVal + ":" + hostVal + ":" + hostPortVal
@@ -604,7 +614,7 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 				pid, err := t.serverService.StartForward(alias, args)
 				t.app.QueueUpdateDraw(func() {
 					if err != nil {
-						t.showStatusTempColor("Forward failed: "+err.Error(), "#FF6B6B")
+						t.showStatusTempColor("Forward failed: "+err.Error(), CurrentTheme.Error)
 					} else {
 						t.refreshServerList()
 						t.showStatusTemp(fmt.Sprintf("Port forwarding started (pid %d)", pid))
@@ -687,7 +697,7 @@ func (t *tui) showStatusTemp(msg string) {
 	if t.statusBar == nil {
 		return
 	}
-	t.showStatusTempColor(msg, "#A0FFA0")
+	t.showStatusTempColor(msg, CurrentTheme.Success)
 }
 
 // showStatusTempColor displays a temporary colored message in the status bar and restores default text after 2s.
@@ -715,7 +725,7 @@ func (t *tui) handleStopForwarding() {
 			err := t.serverService.StopForwarding(alias)
 			t.app.QueueUpdateDraw(func() {
 				if err != nil {
-					t.showStatusTempColor("Failed to stop forwarding: "+err.Error(), "#FF6B6B")
+					t.showStatusTempColor("Failed to stop forwarding: "+err.Error(), CurrentTheme.Error)
 				} else {
 					t.showStatusTemp("Stopped forwarding for " + alias)
 				}

@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/kevinburke/ssh_config"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 // loadAllServers loads servers from the main SSH config and all recursively

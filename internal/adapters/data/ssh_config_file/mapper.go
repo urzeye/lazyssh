@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/kevinburke/ssh_config"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 var effectiveSingleValueKeys = []string{

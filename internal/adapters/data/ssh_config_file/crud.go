@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/kevinburke/ssh_config"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 const (
