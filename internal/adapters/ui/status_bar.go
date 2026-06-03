@@ -15,17 +15,37 @@
 package ui
 
 import (
-	"github.com/gdamore/tcell/v2"
+	"strings"
+
 	"github.com/rivo/tview"
 )
 
 func DefaultStatusText() string {
-	return "[white]0[-] Search  • [white]1[-] Servers  • [white]2[-] Details  • [white]↑↓[-] Navigate  • [white]Enter[-] SSH  • [white]f[-] Forward  • [white]x[-] Stop Forward  • [white]c[-] Copy SSH  • [white]h[-] Copy Host  • [white]a[-] Add  • [white]e[-] Edit  • [white]g[-] Ping  • [white]d[-] Delete  • [white]p[-] Pin/Unpin  • [white]/[-] Search  • [white]q[-] Quit"
+	items := []string{
+		keyText("0") + " Search",
+		keyText("1") + " Servers",
+		keyText("2") + " Details",
+		keyText("↑↓") + " Navigate",
+		keyText("Enter") + " SSH",
+		keyText("T") + " Theme",
+		keyText("f") + " Forward",
+		keyText("x") + " Stop Forward",
+		keyText("c") + " Copy SSH",
+		keyText("h") + " Copy Host",
+		keyText("a") + " Add",
+		keyText("e") + " Edit",
+		keyText("g") + " Ping",
+		keyText("d") + " Delete",
+		keyText("p") + " Pin/Unpin",
+		keyText("/") + " Search",
+		keyText("q") + " Quit",
+	}
+	return strings.Join(items, "  • ")
 }
 
 func NewStatusBar() *tview.TextView {
 	status := tview.NewTextView().SetDynamicColors(true)
-	status.SetBackgroundColor(tcell.Color235)
+	status.SetBackgroundColor(CurrentTheme.StatusBackground)
 	status.SetTextAlign(tview.AlignCenter)
 	status.SetText(DefaultStatusText())
 	return status

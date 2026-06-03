@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 type ServerDetails struct {
@@ -41,8 +40,8 @@ func (sd *ServerDetails) build() {
 		SetBorder(true).
 		SetTitle(" 2 Details ").
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.Color238).
-		SetTitleColor(tcell.Color250)
+		SetBorderColor(CurrentTheme.Border).
+		SetTitleColor(CurrentTheme.Title)
 }
 
 // renderTagChips builds colored tag chips for details view.
@@ -52,7 +51,7 @@ func renderTagChips(tags []string) string {
 	}
 	chips := make([]string, 0, len(tags))
 	for _, t := range tags {
-		chips = append(chips, fmt.Sprintf("[black:#5FAFFF] %s [-:-:-]", t))
+		chips = append(chips, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, t))
 	}
 	return strings.Join(chips, " ")
 }
@@ -89,12 +88,33 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	if server.Port == 0 {
 		portText = ""
 	}
+	valueColor := CurrentTheme.AliasText
 
 	text := fmt.Sprintf(
-		"[::b]%s[-]\n\n[::b]Basic Settings:[-]\n  Host: [white]%s[-]\n  User: [white]%s[-]\n  Port: [white]%s[-]\n  Key:  [white]%s[-]\n  Source: [white]%s[-]\n  Editable: [white]%s[-]\n  Tags: %s\n  Pinned: [white]%s[-]\n  Last SSH: %s\n  SSH Count: [white]%d[-]\n",
-		aliasText, hostText, userText, portText,
-		serverKey, sourceText, editableText, tagsText, pinnedStr,
-		lastSeen, server.SSHCount)
+		"[::b]%s[-]\n\n"+
+			"[::b]Basic Settings:[-]\n"+
+			"  Host: [%s]%s[-]\n"+
+			"  User: [%s]%s[-]\n"+
+			"  Port: [%s]%s[-]\n"+
+			"  Key:  [%s]%s[-]\n"+
+			"  Source: [%s]%s[-]\n"+
+			"  Editable: [%s]%s[-]\n"+
+			"  Tags: %s\n"+
+			"  Pinned: [%s]%s[-]\n"+
+			"  Last SSH: %s\n"+
+			"  SSH Count: [%s]%d[-]\n",
+		aliasText,
+		valueColor, hostText,
+		valueColor, userText,
+		valueColor, portText,
+		valueColor, serverKey,
+		valueColor, sourceText,
+		valueColor, editableText,
+		tagsText,
+		valueColor, pinnedStr,
+		lastSeen,
+		valueColor, server.SSHCount,
+	)
 
 	// Advanced settings section (only show non-empty fields)
 	// Organized by logical grouping for better readability
@@ -211,7 +231,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 		for _, field := range group.fields {
 			if field.value != "" {
 				hasAdvanced = true
-				advancedText += fmt.Sprintf("  %s: [white]%s[-]\n", field.name, field.value)
+				advancedText += fmt.Sprintf("  %s: [%s]%s[-]\n", field.name, valueColor, field.value)
 			}
 		}
 	}

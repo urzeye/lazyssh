@@ -14,14 +14,14 @@
 
 package ui
 
-import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-)
+import "github.com/rivo/tview"
 
 func NewHintBar() *tview.TextView {
 	hint := tview.NewTextView().SetDynamicColors(true)
-	hint.SetBackgroundColor(tcell.Color233)
-	hint.SetText("[#BBBBBB]Press [::b]/[-:-:b] or [::b]0[-:-:b] to search  •  [::b]1[-:-:b] Servers  •  [::b]2[-:-:b] Details[-]")
+	hint.SetBackgroundColor(CurrentTheme.InputBackground)
+	hint.SetText(
+		colorText(CurrentTheme.HostText, "Press ") +
+			"[::b]/[-:-:b] or [::b]0[-:-:b] to search  •  [::b]1[-:-:b] Servers  •  [::b]2[-:-:b] Details[-]",
+	)
 	return hint
 }

@@ -20,9 +20,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 // sshDefaults is now replaced by SSHFieldDefaults in defaults.go
@@ -131,8 +131,8 @@ func (sf *ServerForm) build() {
 	sf.formPanel.SetBorder(true).
 		SetTitle(" " + sf.titleForMode() + " ").
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.Color238).
-		SetTitleColor(tcell.Color250)
+		SetBorderColor(CurrentTheme.Border).
+		SetTitleColor(CurrentTheme.Title)
 
 	sf.formPanel.AddItem(sf.tabBar, 1, 0, false).
 		AddItem(sf.pages, 0, 1, true)
@@ -170,9 +170,13 @@ func (sf *ServerForm) build() {
 
 	// Create hint bar with same background as main screen's status bar
 	hintBar := tview.NewTextView().SetDynamicColors(true)
-	hintBar.SetBackgroundColor(tcell.Color235)
+	hintBar.SetBackgroundColor(CurrentTheme.StatusBackground)
 	hintBar.SetTextAlign(tview.AlignCenter)
-	hintBar.SetText("[white]^H/^L[-] Navigate  • [white]^S[-] Save  • [white]Esc[-] Cancel")
+	hintBar.SetText(
+		keyText("^H/^L") + " Navigate  • " +
+			keyText("^S") + " Save  • " +
+			keyText("Esc") + " Cancel",
+	)
 
 	// Setup main container - header at top, hint bar at bottom
 	sf.Flex.AddItem(sf.header, 2, 0, false).
@@ -1962,7 +1966,7 @@ func (sf *ServerForm) handleSave() bool {
 
 	// Reset title and border (validation already done above)
 	sf.formPanel.SetTitle(" " + sf.titleForMode() + " ")
-	sf.formPanel.SetBorderColor(tcell.Color238)
+	sf.formPanel.SetBorderColor(CurrentTheme.Border)
 
 	server := sf.dataToServer(data)
 	if sf.onSave != nil {

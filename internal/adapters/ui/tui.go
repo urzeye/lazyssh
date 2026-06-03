@@ -15,11 +15,12 @@
 package ui
 
 import (
-	"github.com/gdamore/tcell/v2"
+	"strings"
+
 	"go.uber.org/zap"
 
-	"github.com/urzeye/lazyssh/internal/core/ports"
 	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/ports"
 )
 
 type App interface {
@@ -48,8 +49,23 @@ type tui struct {
 	content *tview.Flex
 
 	sortMode      SortMode
+	themeMode     ThemeMode
 	searchVisible bool
 }
+
+type mainUIState struct {
+	query         string
+	selectedAlias string
+	selectedIndex int
+	searchVisible bool
+	focus         string
+}
+
+const (
+	focusSearch     = "search"
+	focusServerList = "server-list"
+	focusDetails    = "details"
+)
 
 func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string) App {
 	return &tui{
@@ -59,6 +75,8 @@ func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit s
 		version:       version,
 		commit:        commit,
 		settings:      newSettingsManager(logger),
+		sortMode:      SortByAliasAsc,
+		themeMode:     ThemeDark,
 	}
 }
 
@@ -69,7 +87,8 @@ func (t *tui) Run() error {
 		}
 	}()
 	t.app.EnableMouse(true)
-	t.initializeTheme().buildComponents().loadPreferences().buildLayout().bindEvents().loadInitialData()
+	t.loadPreferences().initializeTheme().buildComponents().buildLayout().bindEvents()
+	t.loadInitialData()
 	t.app.SetRoot(t.root, true)
 	t.logger.Infow("starting TUI application", "version", t.version, "commit", t.commit)
 	if err := t.app.Run(); err != nil {
@@ -80,14 +99,15 @@ func (t *tui) Run() error {
 }
 
 func (t *tui) initializeTheme() *tui {
-	tview.Styles.PrimitiveBackgroundColor = tcell.Color232
-	tview.Styles.ContrastBackgroundColor = tcell.Color235
-	tview.Styles.BorderColor = tcell.Color238
-	tview.Styles.TitleColor = tcell.Color250
-	tview.Styles.PrimaryTextColor = tcell.Color252
-	tview.Styles.TertiaryTextColor = tcell.Color245
-	tview.Styles.SecondaryTextColor = tcell.Color245
-	tview.Styles.GraphicsColor = tcell.Color238
+	SetCurrentTheme(t.themeMode)
+	tview.Styles.PrimitiveBackgroundColor = CurrentTheme.PrimitiveBackground
+	tview.Styles.ContrastBackgroundColor = CurrentTheme.ContrastBackground
+	tview.Styles.BorderColor = CurrentTheme.Border
+	tview.Styles.TitleColor = CurrentTheme.Title
+	tview.Styles.PrimaryTextColor = CurrentTheme.PrimaryText
+	tview.Styles.TertiaryTextColor = CurrentTheme.TertiaryText
+	tview.Styles.SecondaryTextColor = CurrentTheme.SecondaryText
+	tview.Styles.GraphicsColor = CurrentTheme.Graphics
 	return t
 }
 
@@ -106,8 +126,6 @@ func (t *tui) buildComponents() *tui {
 	t.details = NewServerDetails()
 	t.statusBar = NewStatusBar()
 
-	// default sort mode
-	t.sortMode = SortByAliasAsc
 	t.searchVisible = false
 
 	return t
@@ -122,6 +140,11 @@ func (t *tui) loadPreferences() *tui {
 		t.sortMode = mode
 	} else {
 		t.logger.Warnw("failed to load sort mode preference", "error", err)
+	}
+	if mode, err := t.settings.LoadThemeMode(); err == nil {
+		t.themeMode = mode
+	} else {
+		t.logger.Warnw("failed to load theme preference", "error", err)
 	}
 
 	return t
@@ -146,18 +169,21 @@ func (t *tui) buildLayout() *tui {
 	return t
 }
 
-func (t *tui) bindEvents() *tui {
+func (t *tui) bindEvents() {
 	t.root.SetInputCapture(t.handleGlobalKeys)
-	return t
 }
 
-func (t *tui) loadInitialData() *tui {
-	servers, _ := t.serverService.ListServers("")
-	sortServersForUI(servers, t.sortMode)
+func (t *tui) loadInitialData() {
+	t.loadServerList("")
+}
+
+func (t *tui) loadServerList(query string) {
+	servers, _ := t.serverService.ListServers(query)
+	if strings.TrimSpace(query) == "" {
+		sortServersForUI(servers, t.sortMode)
+	}
 	t.updateListTitle()
 	t.serverList.UpdateServers(servers)
-
-	return t
 }
 
 func (t *tui) updateListTitle() {
@@ -173,5 +199,95 @@ func (t *tui) persistSortMode() {
 
 	if err := t.settings.SaveSortMode(t.sortMode); err != nil {
 		t.logger.Warnw("failed to save sort mode preference", "error", err)
+	}
+}
+
+func (t *tui) persistThemeMode() {
+	if t.settings == nil {
+		return
+	}
+
+	if err := t.settings.SaveThemeMode(t.themeMode); err != nil {
+		t.logger.Warnw("failed to save theme preference", "error", err)
+	}
+}
+
+func (t *tui) rebuildMainUI() {
+	state := t.captureMainUIState()
+	t.initializeTheme().buildComponents().buildLayout().bindEvents()
+	t.restoreMainUIState(state)
+	if t.app != nil {
+		t.app.SetRoot(t.root, true)
+	}
+}
+
+func (t *tui) captureMainUIState() mainUIState {
+	state := mainUIState{selectedIndex: -1}
+	if t.searchBar != nil {
+		state.query = t.searchBar.GetText()
+	}
+	if t.serverList != nil {
+		state.selectedIndex = t.serverList.GetCurrentItem()
+		if server, ok := t.serverList.GetSelectedServer(); ok {
+			state.selectedAlias = server.Alias
+		}
+	}
+	state.searchVisible = t.searchVisible
+
+	if t.app != nil {
+		focus := t.app.GetFocus()
+		switch {
+		case focus == t.searchBar:
+			state.focus = focusSearch
+		case t.isServerListFocused():
+			state.focus = focusServerList
+		case focus == t.details:
+			state.focus = focusDetails
+		}
+	}
+
+	return state
+}
+
+func (t *tui) restoreMainUIState(state mainUIState) {
+	if state.searchVisible {
+		t.showSearchBar()
+	}
+	if t.searchBar != nil && state.query != "" {
+		t.searchBar.SetText(state.query)
+	}
+
+	t.loadServerList(state.query)
+	t.restoreSelectedServer(state)
+	t.restoreFocus(state)
+}
+
+func (t *tui) restoreSelectedServer(state mainUIState) {
+	if t.serverList == nil {
+		return
+	}
+	if state.selectedAlias != "" && t.serverList.SelectServerByAlias(state.selectedAlias) {
+		return
+	}
+	_ = t.serverList.SelectIndex(state.selectedIndex)
+}
+
+func (t *tui) restoreFocus(state mainUIState) {
+	if t.app == nil {
+		return
+	}
+	switch state.focus {
+	case focusSearch:
+		if t.searchVisible && t.searchBar != nil {
+			t.app.SetFocus(t.searchBar)
+		}
+	case focusDetails:
+		if t.details != nil {
+			t.app.SetFocus(t.details)
+		}
+	case focusServerList:
+		if t.serverList != nil {
+			t.app.SetFocus(t.serverList)
+		}
 	}
 }

@@ -36,14 +36,14 @@ func NewSearchBar() *SearchBar {
 
 func (s *SearchBar) build() {
 	s.InputField.SetLabel(" 🔍 Search: ").
-		SetFieldBackgroundColor(tcell.Color233).
-		SetFieldTextColor(tcell.Color252).
+		SetFieldBackgroundColor(CurrentTheme.InputBackground).
+		SetFieldTextColor(CurrentTheme.PrimaryText).
 		SetFieldWidth(30).
 		SetBorder(true).
 		SetTitle(" 0 Search ").
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.Color238).
-		SetTitleColor(tcell.Color250)
+		SetBorderColor(CurrentTheme.Border).
+		SetTitleColor(CurrentTheme.Title)
 
 	s.InputField.SetChangedFunc(func(text string) {
 		if s.onSearch != nil {

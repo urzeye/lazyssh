@@ -14,6 +14,7 @@ This repository is an enhanced fork of the original [`lazyssh`](https://github.c
 - Proper handling of quoted entries such as `Host "example-name"`
 - Better fuzzy search relevance across alias, hostname, user, and tags
 - Daily workflow improvements such as a collapsible search bar, `0/1/2` panel switching, copy-host support, and persisted sort mode
+- Dark/light theme support with a persisted `T` toggle
 - A set of high-value fixes: backspace works correctly in inputs, `j/k` navigation survives mouse clicks, usernames support `@` and `:`, and alias alignment is more stable
 - Safer config writes for dotfiles and multi-machine sync: symlinks are preserved and `IdentityFile` is normalized to portable `~/.ssh/...` paths whenever possible
 
@@ -230,6 +231,7 @@ make run
 | `p` | Pin or unpin a host |
 | `s` | Switch the sort field |
 | `S` | Reverse the sort order |
+| `T` | Toggle dark/light theme |
 | `0` / `1` / `2` | Focus the search bar / host list / details panel |
 | `q` | Quit |
 

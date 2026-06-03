@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/mattn/go-runewidth"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 // IsForwarding is an optional hook supplied by TUI to indicate active forwarding per alias.
@@ -54,11 +54,10 @@ func renderTagBadgesForList(tags []string) string {
 	}
 	parts := make([]string, 0, len(shown)+1)
 	for _, t := range shown {
-		// Light blue background chip, similar to details view.
-		parts = append(parts, fmt.Sprintf("[black:#5FAFFF] %s [-:-:-]", t))
+		parts = append(parts, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, t))
 	}
 	if extra := len(tags) - len(shown); extra > 0 {
-		parts = append(parts, fmt.Sprintf("[#8A8A8A]+%d[-]", extra))
+		parts = append(parts, fmt.Sprintf("[%s]+%d[-]", CurrentTheme.DimText, extra))
 	}
 	return strings.Join(parts, " ")
 }
@@ -98,7 +97,7 @@ func formatServerLine(s domain.Server, maxAliasWidth int) (primary, secondary st
 	}
 	fCol := cellPad(fGlyph, 2)
 	if isFwd {
-		fCol = "[#A0FFA0]" + fCol + "[-]"
+		fCol = colorText(CurrentTheme.Success, fCol)
 	}
 	// Calculate the actual display width of the alias
 	aliasWidth := runewidth.StringWidth(s.Alias)
@@ -109,11 +108,14 @@ func formatServerLine(s domain.Server, maxAliasWidth int) (primary, secondary st
 	}
 	// Use a consistent color for alias; host/IP fixed width; then forwarding column
 	primary = fmt.Sprintf(
-		"%s [white::b]%s[-] [#AAAAAA]%-18s[-] %s [#888888]Last SSH: %-8s[-]  %s %s",
+		"%s [%s::b]%s[-] [%s]%-18s[-] %s [%s]Last SSH: %-8s[-]  %s %s",
 		icon,
+		CurrentTheme.AliasText,
 		paddedAlias,
+		CurrentTheme.HostText,
 		s.Host,
 		fCol,
+		CurrentTheme.MetaText,
 		humanizeDuration(s.LastSeen),
 		renderTagBadgesForList(s.Tags),
 		originIcon(s),
