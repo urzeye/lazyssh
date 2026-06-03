@@ -408,11 +408,15 @@ func (t *tui) handleRefreshBackground() {
 			})
 			return
 		}
+		sessions, sessionsErr := t.serverService.ListActiveSessions()
 		if strings.TrimSpace(q) == "" {
 			sortServersForUI(servers, t.sortMode)
 		}
 		t.app.QueueUpdateDraw(func() {
 			t.serverList.UpdateServers(servers)
+			if sessionsErr == nil && t.sessions != nil {
+				t.sessions.SetSessions(sessions)
+			}
 			// Try to restore selection if still valid
 			if prevIdx >= 0 && prevIdx < t.serverList.List.GetItemCount() {
 				t.serverList.SetCurrentItem(prevIdx)
@@ -420,7 +424,11 @@ func (t *tui) handleRefreshBackground() {
 					t.details.UpdateServer(srv)
 				}
 			}
-			t.showStatusTemp(fmt.Sprintf("Refreshed %d servers", len(servers)))
+			if sessionsErr != nil {
+				t.showStatusTempColor(fmt.Sprintf("Refreshed %d servers; active sessions failed", len(servers)), CurrentTheme.Warning)
+				return
+			}
+			t.showStatusTemp(fmt.Sprintf("Refreshed %d servers, %d active sessions", len(servers), len(sessions)))
 		})
 	}(currentIdx, query)
 }
@@ -648,6 +656,9 @@ func (t *tui) showSearchBar() {
 	t.left.Clear()
 	t.left.AddItem(t.searchBar, 3, 0, true)
 	t.left.AddItem(t.serverList, 0, 1, false)
+	if t.sessions != nil {
+		t.left.AddItem(t.sessions, 6, 0, false)
+	}
 	t.searchVisible = true
 	if t.app != nil {
 		t.app.SetFocus(t.searchBar)
@@ -666,6 +677,9 @@ func (t *tui) hideSearchBar() {
 	t.left.Clear()
 	t.left.AddItem(t.hintBar, 1, 0, false)
 	t.left.AddItem(t.serverList, 0, 1, true)
+	if t.sessions != nil {
+		t.left.AddItem(t.sessions, 6, 0, false)
+	}
 	t.searchVisible = false
 	if t.app != nil {
 		t.app.SetFocus(t.serverList)
@@ -686,6 +700,7 @@ func (t *tui) refreshServerList() {
 		sortServersForUI(filtered, t.sortMode)
 	}
 	t.serverList.UpdateServers(filtered)
+	t.loadActiveSessions()
 }
 
 func (t *tui) returnToMain() {

@@ -38,6 +38,7 @@ It lets you browse, search, connect to, edit, and organize the hosts defined in 
 ### Fast Navigation
 - Fuzzy search by alias, IP, user, or tag
 - Press `Enter` to connect to the selected host immediately
+- See currently running local SSH sessions in a read-only panel
 - Organize hosts with tags such as `prod`, `dev`, and `test`
 - Sort by alias or last connection time, with reversible order
 

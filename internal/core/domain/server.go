@@ -117,3 +117,11 @@ type Server struct {
 	// Debugging settings
 	LogLevel string
 }
+
+type ActiveSession struct {
+	PID         int
+	Alias       string
+	Destination string
+	Command     string
+	Forwards    []string
+}
