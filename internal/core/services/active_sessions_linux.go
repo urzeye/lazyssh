@@ -57,6 +57,7 @@ func listProcesses() ([]processInfo, error) {
 }
 
 func procStatusMatchesUID(path string, currentUID int) bool {
+	// #nosec G304 -- path is built from a numeric /proc pid directory and a fixed status filename.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
@@ -76,6 +77,7 @@ func procStatusMatchesUID(path string, currentUID int) bool {
 }
 
 func readProcCmdline(path string) ([]string, bool) {
+	// #nosec G304 -- path is built from a numeric /proc pid directory and a fixed cmdline filename.
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) == 0 {
 		return nil, false

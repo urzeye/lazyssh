@@ -77,7 +77,7 @@ func main() {
 			}
 
 			metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
-			var serverRepo = ssh_config_file.NewRepositoryWithWritePath(log, configPath, managedConfigPath, metaDataFile)
+			serverRepo := ssh_config_file.NewRepositoryWithWritePath(log, configPath, managedConfigPath, metaDataFile)
 			if sshConfigReadOnly {
 				serverRepo = ssh_config_file.NewReadOnlyRepository(log, configPath, metaDataFile)
 			}
