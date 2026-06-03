@@ -51,3 +51,18 @@ func TestActiveSessionsSetSessionsShowsEmptyState(t *testing.T) {
 		t.Fatalf("text = %q, want empty state", text)
 	}
 }
+
+func TestFormatActiveSessionLineShowsDestinationAndForwards(t *testing.T) {
+	line := formatActiveSessionLine(domain.ActiveSession{
+		PID:         12345,
+		Alias:       "example.com",
+		Destination: "ops@example.com",
+		Forwards:    []string{"8080:localhost:80"},
+	})
+
+	for _, want := range []string{"12345", "example.com", "ops@example.com", "fwd 8080:localhost:80"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("line = %q, want it to contain %q", line, want)
+		}
+	}
+}
