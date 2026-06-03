@@ -12,19 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
+//go:build !windows && !linux
 
 package services
 
 import (
 	"os/exec"
+	"os/user"
 	"strings"
 )
 
-func listProcessLines() ([]string, error) {
-	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
+func listProcesses() ([]processInfo, error) {
+	currentUser, err := user.Current()
 	if err != nil {
 		return nil, err
 	}
-	return strings.Split(string(out), "\n"), nil
+
+	// #nosec G204 -- currentUser.Username comes from the local OS account and scopes ps to this user.
+	out, err := exec.Command("ps", "-U", currentUser.Username, "-o", "pid=,command=").Output()
+	if err != nil {
+		return nil, err
+	}
+
+	processes := make([]processInfo, 0)
+	for _, line := range strings.Split(string(out), "\n") {
+		process, ok := parseProcessLine(line)
+		if ok {
+			processes = append(processes, process)
+		}
+	}
+	return processes, nil
 }

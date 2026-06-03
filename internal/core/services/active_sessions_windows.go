@@ -16,6 +16,40 @@
 
 package services
 
-func listProcessLines() ([]string, error) {
-	return nil, nil
+import (
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
+func listProcesses() ([]processInfo, error) {
+	command := "Get-CimInstance Win32_Process -Filter \"Name = 'ssh.exe'\" | " +
+		"ForEach-Object { [string]$_.ProcessId + \"`t\" + $_.CommandLine }"
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command).Output()
+	if err != nil {
+		return nil, err
+	}
+
+	processes := make([]processInfo, 0)
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pidText, commandLine, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(pidText))
+		if err != nil {
+			continue
+		}
+		commandLine = strings.TrimSpace(commandLine)
+		processes = append(processes, processInfo{
+			PID:     pid,
+			Args:    splitCommandLine(commandLine),
+			Command: commandLine,
+		})
+	}
+	return processes, nil
 }

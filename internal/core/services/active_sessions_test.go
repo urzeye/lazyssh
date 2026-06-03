@@ -59,6 +59,24 @@ func TestParseSSHProcessLine(t *testing.T) {
 			wantAlias: "prod web",
 			wantDest:  "prod web",
 		},
+		{
+			name:      "bind interface option",
+			line:      "12350 ssh -B en0 prod",
+			wantAlias: "prod",
+			wantDest:  "prod",
+		},
+		{
+			name:      "escape char option",
+			line:      "12351 ssh -e none prod",
+			wantAlias: "prod",
+			wantDest:  "prod",
+		},
+		{
+			name:      "unbracketed ipv6 destination",
+			line:      "12352 ssh user@2001:db8::1",
+			wantAlias: "2001:db8::1",
+			wantDest:  "user@2001:db8::1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -77,6 +95,25 @@ func TestParseSSHProcessLine(t *testing.T) {
 				t.Fatalf("Forwards = %#v, want %#v", got.Forwards, tt.wantForward)
 			}
 		})
+	}
+}
+
+func TestParseSSHProcessPreservesArgvBoundaries(t *testing.T) {
+	got, ok := parseSSHProcess(processInfo{
+		PID: 12345,
+		Args: []string{
+			"ssh",
+			"-F",
+			"/tmp/ssh configs/config",
+			"prod",
+		},
+		Command: "ssh -F /tmp/ssh configs/config prod",
+	})
+	if !ok {
+		t.Fatalf("parseSSHProcess() ok = false, want true")
+	}
+	if got.Destination != "prod" {
+		t.Fatalf("Destination = %q, want prod", got.Destination)
 	}
 }
 

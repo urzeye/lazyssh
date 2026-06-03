@@ -23,17 +23,23 @@ import (
 	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
+type processInfo struct {
+	PID     int
+	Args    []string
+	Command string
+}
+
 // ListActiveSessions returns running local ssh client processes.
 func (s *serverService) ListActiveSessions() ([]domain.ActiveSession, error) {
-	lines, err := listProcessLines()
+	processes, err := listProcesses()
 	if err != nil {
 		s.logger.Warnw("failed to list active ssh sessions", "error", err)
 		return nil, err
 	}
 
 	sessions := make([]domain.ActiveSession, 0)
-	for _, line := range lines {
-		session, ok := parseSSHProcessLine(line)
+	for _, process := range processes {
+		session, ok := parseSSHProcess(process)
 		if ok {
 			sessions = append(sessions, session)
 		}
@@ -50,36 +56,51 @@ func (s *serverService) ListActiveSessions() ([]domain.ActiveSession, error) {
 }
 
 func parseSSHProcessLine(line string) (domain.ActiveSession, bool) {
+	process, ok := parseProcessLine(line)
+	if !ok {
+		return domain.ActiveSession{}, false
+	}
+	return parseSSHProcess(process)
+}
+
+func parseProcessLine(line string) (processInfo, bool) {
 	line = strings.TrimSpace(line)
 	if line == "" {
-		return domain.ActiveSession{}, false
+		return processInfo{}, false
 	}
 
 	pidText, command, ok := strings.Cut(line, " ")
 	if !ok {
-		return domain.ActiveSession{}, false
+		return processInfo{}, false
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(pidText))
 	if err != nil {
-		return domain.ActiveSession{}, false
+		return processInfo{}, false
 	}
 
 	command = strings.TrimSpace(command)
-	args := splitCommandLine(command)
-	if len(args) == 0 || filepath.Base(args[0]) != "ssh" {
+	return processInfo{
+		PID:     pid,
+		Args:    splitCommandLine(command),
+		Command: command,
+	}, true
+}
+
+func parseSSHProcess(process processInfo) (domain.ActiveSession, bool) {
+	if len(process.Args) == 0 || filepath.Base(process.Args[0]) != "ssh" {
 		return domain.ActiveSession{}, false
 	}
 
-	destination, forwards := parseSSHDestination(args[1:])
+	destination, forwards := parseSSHDestination(process.Args[1:])
 	if destination == "" {
 		return domain.ActiveSession{}, false
 	}
 
 	return domain.ActiveSession{
-		PID:         pid,
+		PID:         process.PID,
 		Alias:       displayAlias(destination),
 		Destination: destination,
-		Command:     command,
+		Command:     process.Command,
 		Forwards:    forwards,
 	}, true
 }
@@ -138,7 +159,7 @@ func optionConsumesNextArg(arg string) bool {
 	if len(arg) > 2 {
 		return false
 	}
-	return strings.ContainsRune("bcEFIJiilmOoPpQRSWw", rune(arg[1]))
+	return strings.ContainsRune("BbcEeFIJilmOoPpQRSWw", rune(arg[1]))
 }
 
 func displayAlias(destination string) string {
@@ -150,7 +171,8 @@ func displayAlias(destination string) string {
 	if end := strings.Index(alias, "]"); end >= 0 {
 		return alias[:end]
 	}
-	if colon := strings.LastIndex(alias, ":"); colon > 0 {
+	if strings.Count(alias, ":") == 1 {
+		colon := strings.LastIndex(alias, ":")
 		return alias[:colon]
 	}
 	return alias
