@@ -9,7 +9,7 @@
 - 支持递归读取 `Include` / `conf.d` 形式的 SSH 配置，不再局限于单一 `~/.ssh/config`
 - 支持 managed 模式：从 root config 实时读取完整配置树，同时只把新增 / 修改写回指定的 managed 文件
 - 对来自 include 文件或其他非托管文件的主机做了只读保护，并在列表中标记来源，避免误编辑外部配置
-- 新增 `--sshconfig`、`--managed-mode`、`--managed-sshconfig` 参数，适合和 `config.local` / `conf.d` 工作流配合
+- 新增 `--sshconfig`、`--managed-mode`、`--managed-sshconfig`、`--ssh-config-readonly` 参数，适合和 `config.local` / `conf.d` 工作流配合
 - 现在会展示主机“最终生效”的 SSH 配置值，`Host *`、`Host lab-*` 这类模式规则以及 root config 的默认项也会正确体现在列表和详情中
 - 兼容带引号的 `Host "example-name"` 条目，避免因为别名格式导致列表展示、删除或连接行为异常
 - 搜索改为更实用的模糊相关性排序，按别名、主机、用户、标签综合匹配
@@ -100,6 +100,22 @@ lazyssh \
 - 只有来自 managed 文件的主机可以被新增、编辑、删除
 - 通过 `Host *`、`Host xxx-*` 等模式继承到的最终配置值，也会正确显示在界面中
 - SSH 连接和端口转发仍然继续使用 root config，因此和系统里的 `ssh` 行为保持一致
+
+## 🔒 只读模式
+
+如果你希望 lazyssh 只作为 SSH 配置浏览器和连接启动器使用，可以运行：
+
+```bash
+lazyssh --ssh-config-readonly
+```
+
+或者设置环境变量：
+
+```bash
+LAZYSSH_SSH_CONFIG_READONLY=1 lazyssh
+```
+
+只读模式下，lazyssh 仍会读取完整的 `Include` 树，并保留搜索、详情、复制、ping、SSH 连接、端口转发、置顶和最近连接时间等 metadata 能力。它会禁用会修改 SSH 配置的操作，例如新增、编辑、删除和编辑标签。
 
 ## 🛡️ 配置安全：非破坏性写入与自动备份
 

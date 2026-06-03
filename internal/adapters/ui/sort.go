@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 // SortMode controls how unpinned servers are ordered in the UI.

@@ -19,12 +19,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Adembc/lazyssh/internal/adapters/data/ssh_config_file"
-	"github.com/Adembc/lazyssh/internal/logger"
-
-	"github.com/Adembc/lazyssh/internal/adapters/ui"
-	"github.com/Adembc/lazyssh/internal/core/services"
 	"github.com/spf13/cobra"
+
+	"github.com/urzeye/lazyssh/internal/adapters/data/ssh_config_file"
+	"github.com/urzeye/lazyssh/internal/adapters/ui"
+	"github.com/urzeye/lazyssh/internal/core/services"
+	"github.com/urzeye/lazyssh/internal/logger"
 )
 
 var (
@@ -33,6 +33,7 @@ var (
 	sshConfigFile        string
 	managedMode          bool
 	managedSSHConfigFile string
+	sshConfigReadOnly    bool
 )
 
 func main() {
@@ -41,6 +42,8 @@ func main() {
 		managedModeHelp      = "read from the root ssh config but write changes to a managed ssh config file"
 		managedSSHConfigHelp = "path to the writable managed ssh config file " +
 			"(default: ~/.ssh/config.local when managed mode is enabled)"
+		sshConfigReadOnlyHelp = "read hosts from the ssh config without writing changes back " +
+			"(can also be set with LAZYSSH_SSH_CONFIG_READONLY=1)"
 	)
 
 	log, err := logger.New("LAZYSSH")
@@ -58,35 +61,49 @@ func main() {
 		//nolint:gocritic // exitAfterDefer: ensure immediate exit on unrecoverable error
 		os.Exit(1)
 	}
-	if sshConfigFile == "" {
-		sshConfigFile = filepath.Join(home, ".ssh", "config")
-	}
-	if managedSSHConfigFile != "" {
-		managedMode = true
-	}
-	if managedMode && managedSSHConfigFile == "" {
-		managedSSHConfigFile = filepath.Join(home, ".ssh", "config.local")
-	}
-	metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
-
-	serverRepo := ssh_config_file.NewRepositoryWithWritePath(log, sshConfigFile, managedSSHConfigFile, metaDataFile)
-	serverService := services.NewServerService(log, serverRepo)
-	tui := ui.NewTUI(log, serverService, version, gitCommit)
-
 	rootCmd := &cobra.Command{
 		Use:   ui.AppName,
 		Short: "Lazy SSH server picker TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath := sshConfigFile
+			if configPath == "" {
+				configPath = filepath.Join(home, ".ssh", "config")
+			}
+
+			managedConfigPath := managedSSHConfigFile
+			useManagedMode := managedMode || managedConfigPath != ""
+			if useManagedMode && managedConfigPath == "" {
+				managedConfigPath = filepath.Join(home, ".ssh", "config.local")
+			}
+
+			metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
+			var serverRepo = ssh_config_file.NewRepositoryWithWritePath(log, configPath, managedConfigPath, metaDataFile)
+			if sshConfigReadOnly {
+				serverRepo = ssh_config_file.NewReadOnlyRepository(log, configPath, metaDataFile)
+			}
+
+			serverService := services.NewServerService(log, serverRepo)
+			tui := ui.NewTUI(log, serverService, version, gitCommit)
 			return tui.Run()
 		},
 	}
 	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", sshConfigHelp)
 	rootCmd.PersistentFlags().BoolVar(&managedMode, "managed-mode", false, managedModeHelp)
 	rootCmd.PersistentFlags().StringVar(&managedSSHConfigFile, "managed-sshconfig", "", managedSSHConfigHelp)
+	rootCmd.PersistentFlags().BoolVar(&sshConfigReadOnly, "ssh-config-readonly", envBool("LAZYSSH_SSH_CONFIG_READONLY"), sshConfigReadOnlyHelp)
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func envBool(name string) bool {
+	switch os.Getenv(name) {
+	case "1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On":
+		return true
+	default:
+		return false
 	}
 }

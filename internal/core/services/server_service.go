@@ -29,8 +29,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
-	"github.com/Adembc/lazyssh/internal/core/ports"
+	"github.com/urzeye/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/ports"
 	"go.uber.org/zap"
 )
 
@@ -466,6 +466,11 @@ func (s *serverService) IsForwarding(alias string) bool {
 	s.fwMu.Lock()
 	defer s.fwMu.Unlock()
 	return len(s.forwards[alias]) > 0
+}
+
+// IsReadOnly reports whether SSH config mutations are disabled.
+func (s *serverService) IsReadOnly() bool {
+	return s.serverRepository.IsReadOnly()
 }
 
 // Ping checks if the server is reachable on its SSH port.

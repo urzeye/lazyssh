@@ -14,7 +14,7 @@
 
 package ports
 
-import "github.com/Adembc/lazyssh/internal/core/domain"
+import "github.com/urzeye/lazyssh/internal/core/domain"
 
 type ServerRepository interface {
 	ListServers(query string) ([]domain.Server, error)
@@ -24,4 +24,5 @@ type ServerRepository interface {
 	SetPinned(alias string, pinned bool) error
 	RecordSSH(alias string) error
 	GetConfigFile() string
+	IsReadOnly() bool
 }

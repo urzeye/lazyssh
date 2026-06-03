@@ -17,7 +17,7 @@ package ports
 import (
 	"time"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 type ServerService interface {
@@ -31,5 +31,6 @@ type ServerService interface {
 	StartForward(alias string, extraArgs []string) (int, error)
 	StopForwarding(alias string) error
 	IsForwarding(alias string) bool
+	IsReadOnly() bool
 	Ping(server domain.Server) (bool, time.Duration, error)
 }

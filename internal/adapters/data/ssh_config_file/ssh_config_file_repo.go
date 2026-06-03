@@ -17,9 +17,9 @@ package ssh_config_file
 import (
 	"fmt"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
-	"github.com/Adembc/lazyssh/internal/core/ports"
 	"github.com/kevinburke/ssh_config"
+	"github.com/urzeye/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/ports"
 	"go.uber.org/zap"
 )
 
@@ -27,6 +27,7 @@ import (
 type Repository struct {
 	readConfigPath  string
 	writeConfigPath string
+	readOnly        bool
 	fileSystem      FileSystem
 	metadataManager *metadataManager
 	logger          *zap.SugaredLogger
@@ -40,11 +41,27 @@ func NewRepository(logger *zap.SugaredLogger, configPath, metaDataPath string) p
 // NewRepositoryWithWritePath creates a repository that reads from a root SSH
 // config and writes mutations to a managed SSH config file.
 func NewRepositoryWithWritePath(logger *zap.SugaredLogger, readConfigPath, writeConfigPath, metaDataPath string) ports.ServerRepository {
-	return NewRepositoryWithFS(logger, readConfigPath, writeConfigPath, metaDataPath, DefaultFileSystem{})
+	return newRepositoryWithFS(logger, readConfigPath, writeConfigPath, metaDataPath, DefaultFileSystem{}, false)
+}
+
+// NewReadOnlyRepository creates a repository that can read SSH config data but
+// rejects all SSH config mutations.
+func NewReadOnlyRepository(logger *zap.SugaredLogger, configPath, metaDataPath string) ports.ServerRepository {
+	return newRepositoryWithFS(logger, configPath, configPath, metaDataPath, DefaultFileSystem{}, true)
 }
 
 // NewRepositoryWithFS creates a new SSH config repository with a custom filesystem.
 func NewRepositoryWithFS(logger *zap.SugaredLogger, readConfigPath, writeConfigPath string, metaDataPath string, fs FileSystem) ports.ServerRepository {
+	return newRepositoryWithFS(logger, readConfigPath, writeConfigPath, metaDataPath, fs, false)
+}
+
+func newRepositoryWithFS(
+	logger *zap.SugaredLogger,
+	readConfigPath, writeConfigPath string,
+	metaDataPath string,
+	fs FileSystem,
+	readOnly bool,
+) ports.ServerRepository {
 	if writeConfigPath == "" {
 		writeConfigPath = readConfigPath
 	}
@@ -53,6 +70,7 @@ func NewRepositoryWithFS(logger *zap.SugaredLogger, readConfigPath, writeConfigP
 		logger:          logger,
 		readConfigPath:  readConfigPath,
 		writeConfigPath: writeConfigPath,
+		readOnly:        readOnly,
 		fileSystem:      fs,
 		metadataManager: newMetadataManager(metaDataPath, logger),
 	}
@@ -71,6 +89,9 @@ func (r *Repository) ListServers(query string) ([]domain.Server, error) {
 		metadata = make(map[string]ServerMetadata)
 	}
 	servers = r.mergeMetadata(servers, metadata)
+	if r.readOnly {
+		r.markServersReadOnly(servers)
+	}
 	if query == "" {
 		return servers, nil
 	}
@@ -80,6 +101,10 @@ func (r *Repository) ListServers(query string) ([]domain.Server, error) {
 
 // AddServer adds a new server to the SSH config.
 func (r *Repository) AddServer(server domain.Server) error {
+	if err := r.ensureWritable("add servers"); err != nil {
+		return err
+	}
+
 	if existing, found, err := r.findLoadedServerByAlias(server.Alias, nil); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	} else if found {
@@ -103,6 +128,10 @@ func (r *Repository) AddServer(server domain.Server) error {
 
 // UpdateServer updates an existing server in the SSH config.
 func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server) error {
+	if err := r.ensureWritable("edit servers"); err != nil {
+		return err
+	}
+
 	if server.Readonly {
 		return fmt.Errorf("server '%s' is defined in %s and cannot be edited here", server.Alias, server.SourceFile)
 	}
@@ -156,6 +185,10 @@ func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server)
 
 // DeleteServer removes a server from the SSH config.
 func (r *Repository) DeleteServer(server domain.Server) error {
+	if err := r.ensureWritable("delete servers"); err != nil {
+		return err
+	}
+
 	if server.Readonly {
 		return fmt.Errorf("server '%s' is defined in %s and cannot be deleted here", server.Alias, server.SourceFile)
 	}
@@ -192,4 +225,25 @@ func (r *Repository) RecordSSH(alias string) error {
 // GetConfigFile returns the root SSH config file path used by this repository.
 func (r *Repository) GetConfigFile() string {
 	return r.readConfigPath
+}
+
+// IsReadOnly reports whether SSH config mutations are disabled.
+func (r *Repository) IsReadOnly() bool {
+	return r.readOnly
+}
+
+func (r *Repository) ensureWritable(action string) error {
+	if !r.readOnly {
+		return nil
+	}
+	return fmt.Errorf("read-only mode is enabled; cannot %s", action)
+}
+
+func (r *Repository) markServersReadOnly(servers []domain.Server) {
+	for i := range servers {
+		servers[i].Readonly = true
+		if servers[i].SourceFile == "" {
+			servers[i].SourceFile = r.readConfigPath
+		}
+	}
 }
