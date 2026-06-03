@@ -41,6 +41,7 @@ type tui struct {
 	hintBar    *tview.TextView
 	searchBar  *SearchBar
 	serverList *ServerList
+	sessions   *ActiveSessions
 	details    *ServerDetails
 	statusBar  *tview.TextView
 
@@ -123,6 +124,7 @@ func (t *tui) buildComponents() *tui {
 	t.serverList = NewServerList().
 		OnSelectionChange(t.handleServerSelectionChange).
 		OnReturnToSearch(t.handleReturnToSearch)
+	t.sessions = NewActiveSessions()
 	t.details = NewServerDetails()
 	t.statusBar = NewStatusBar()
 
@@ -153,7 +155,8 @@ func (t *tui) loadPreferences() *tui {
 func (t *tui) buildLayout() *tui {
 	t.left = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(t.hintBar, 1, 0, false).
-		AddItem(t.serverList, 0, 1, true)
+		AddItem(t.serverList, 0, 1, true).
+		AddItem(t.sessions, 6, 0, false)
 
 	right := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(t.details, 0, 1, false)
@@ -175,6 +178,7 @@ func (t *tui) bindEvents() {
 
 func (t *tui) loadInitialData() {
 	t.loadServerList("")
+	t.loadActiveSessions()
 }
 
 func (t *tui) loadServerList(query string) {
@@ -184,6 +188,18 @@ func (t *tui) loadServerList(query string) {
 	}
 	t.updateListTitle()
 	t.serverList.UpdateServers(servers)
+}
+
+func (t *tui) loadActiveSessions() {
+	if t.sessions == nil {
+		return
+	}
+	sessions, err := t.serverService.ListActiveSessions()
+	if err != nil {
+		t.sessions.SetText(colorText(CurrentTheme.Error, "Failed to load active sessions"))
+		return
+	}
+	t.sessions.SetSessions(sessions)
 }
 
 func (t *tui) updateListTitle() {
@@ -258,6 +274,7 @@ func (t *tui) restoreMainUIState(state mainUIState) {
 	}
 
 	t.loadServerList(state.query)
+	t.loadActiveSessions()
 	t.restoreSelectedServer(state)
 	t.restoreFocus(state)
 }

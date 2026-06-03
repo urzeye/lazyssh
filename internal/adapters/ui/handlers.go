@@ -408,11 +408,15 @@ func (t *tui) handleRefreshBackground() {
 			})
 			return
 		}
+		sessions, sessionsErr := t.serverService.ListActiveSessions()
 		if strings.TrimSpace(q) == "" {
 			sortServersForUI(servers, t.sortMode)
 		}
 		t.app.QueueUpdateDraw(func() {
 			t.serverList.UpdateServers(servers)
+			if sessionsErr == nil && t.sessions != nil {
+				t.sessions.SetSessions(sessions)
+			}
 			// Try to restore selection if still valid
 			if prevIdx >= 0 && prevIdx < t.serverList.List.GetItemCount() {
 				t.serverList.SetCurrentItem(prevIdx)
@@ -420,7 +424,11 @@ func (t *tui) handleRefreshBackground() {
 					t.details.UpdateServer(srv)
 				}
 			}
-			t.showStatusTemp(fmt.Sprintf("Refreshed %d servers", len(servers)))
+			if sessionsErr != nil {
+				t.showStatusTempColor(fmt.Sprintf("Refreshed %d servers; active sessions failed", len(servers)), CurrentTheme.Warning)
+				return
+			}
+			t.showStatusTemp(fmt.Sprintf("Refreshed %d servers, %d active sessions", len(servers), len(sessions)))
 		})
 	}(currentIdx, query)
 }
