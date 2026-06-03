@@ -15,7 +15,7 @@
 package ui
 
 import (
-	"github.com/Adembc/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 	"github.com/rivo/tview"

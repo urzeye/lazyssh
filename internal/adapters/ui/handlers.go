@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
 // =============================================================================
@@ -288,6 +288,11 @@ func (t *tui) handleServerSelectionChange(server domain.Server) {
 }
 
 func (t *tui) handleServerAdd() {
+	if t.serverService.IsReadOnly() {
+		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", "#FFCC66")
+		return
+	}
+
 	form := NewServerForm(ServerFormAdd, nil).
 		SetApp(t.app).
 		SetVersionInfo(t.version, t.commit).

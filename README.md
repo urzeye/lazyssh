@@ -9,7 +9,7 @@ This repository is an enhanced fork of the original [`lazyssh`](https://github.c
 - Recursive support for `Include` and `conf.d` style SSH layouts instead of assuming a single `~/.ssh/config`
 - Managed mode: read the full config tree from the root config in real time while writing changes only to a dedicated managed file
 - Read-only protection for hosts coming from included or unmanaged files, with source markers in the UI to prevent accidental edits
-- New flags: `--sshconfig`, `--managed-mode`, and `--managed-sshconfig`
+- New flags: `--sshconfig`, `--managed-mode`, `--managed-sshconfig`, and `--ssh-config-readonly`
 - Display of effective SSH values after applying `Host *`, pattern rules such as `Host lab-*`, and defaults inherited from the root config
 - Proper handling of quoted entries such as `Host "example-name"`
 - Better fuzzy search relevance across alias, hostname, user, and tags
@@ -100,6 +100,22 @@ In this mode:
 - Only hosts defined in the managed file can be added, edited, or deleted
 - Effective values inherited through `Host *`, `Host xxx-*`, and similar patterns are rendered correctly in the UI
 - SSH connections and forwarding still use the root config, so behavior stays aligned with the system `ssh` command
+
+## 🔒 Read-Only Mode
+
+If you want lazyssh to work strictly as a browser/launcher for your SSH config, run:
+
+```bash
+lazyssh --ssh-config-readonly
+```
+
+or set:
+
+```bash
+LAZYSSH_SSH_CONFIG_READONLY=1 lazyssh
+```
+
+In read-only mode, lazyssh still reads the full `Include` tree and allows search, details, copy, ping, SSH connection, forwarding, pinning, and last-seen metadata. It disables SSH config mutations such as adding, editing, deleting, or editing tags.
 
 ## 🛡️ Safe Writes and Automatic Backups
 

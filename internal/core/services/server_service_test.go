@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Adembc/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/domain"
 	"go.uber.org/zap"
 )
 
@@ -54,6 +54,10 @@ func (m mockServerRepository) RecordSSH(alias string) error {
 
 func (m mockServerRepository) GetConfigFile() string {
 	return "/tmp/test-config"
+}
+
+func (m mockServerRepository) IsReadOnly() bool {
+	return false
 }
 
 func TestListServersRanksFuzzyMatches(t *testing.T) {
