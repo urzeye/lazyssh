@@ -90,7 +90,12 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&sshConfigFile, "sshconfig", "", sshConfigHelp)
 	rootCmd.PersistentFlags().BoolVar(&managedMode, "managed-mode", false, managedModeHelp)
 	rootCmd.PersistentFlags().StringVar(&managedSSHConfigFile, "managed-sshconfig", "", managedSSHConfigHelp)
-	rootCmd.PersistentFlags().BoolVar(&sshConfigReadOnly, "ssh-config-readonly", envBool("LAZYSSH_SSH_CONFIG_READONLY"), sshConfigReadOnlyHelp)
+	rootCmd.PersistentFlags().BoolVar(
+		&sshConfigReadOnly,
+		"ssh-config-readonly",
+		envBool("LAZYSSH_SSH_CONFIG_READONLY"),
+		sshConfigReadOnlyHelp,
+	)
 	rootCmd.SilenceUsage = true
 
 	if err := rootCmd.Execute(); err != nil {
