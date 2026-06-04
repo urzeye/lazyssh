@@ -16,6 +16,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -52,6 +53,8 @@ type tui struct {
 	sortMode      SortMode
 	themeMode     ThemeMode
 	searchVisible bool
+
+	activeSessionsRefreshStop chan struct{}
 }
 
 type mainUIState struct {
@@ -67,6 +70,8 @@ const (
 	focusServerList = "server-list"
 	focusDetails    = "details"
 )
+
+const activeSessionsRefreshInterval = 10 * time.Second
 
 func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string) App {
 	return &tui{
@@ -91,6 +96,8 @@ func (t *tui) Run() error {
 	t.loadPreferences().initializeTheme().buildComponents().buildLayout().bindEvents()
 	t.loadInitialData()
 	t.app.SetRoot(t.root, true)
+	t.startActiveSessionsRefresh()
+	defer t.stopActiveSessionsRefresh()
 	t.logger.Infow("starting TUI application", "version", t.version, "commit", t.commit)
 	if err := t.app.Run(); err != nil {
 		t.logger.Errorw("application run error", "error", err)
@@ -200,6 +207,55 @@ func (t *tui) loadActiveSessions() {
 		return
 	}
 	t.sessions.SetSessions(sessions)
+}
+
+func (t *tui) startActiveSessionsRefresh() {
+	if t.app == nil || t.serverService == nil || t.activeSessionsRefreshStop != nil {
+		return
+	}
+
+	stop := make(chan struct{})
+	t.activeSessionsRefreshStop = stop
+
+	go func() {
+		ticker := time.NewTicker(activeSessionsRefreshInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				t.refreshActiveSessionsFromBackground()
+			case <-stop:
+				return
+			}
+		}
+	}()
+}
+
+func (t *tui) stopActiveSessionsRefresh() {
+	if t.activeSessionsRefreshStop == nil {
+		return
+	}
+	close(t.activeSessionsRefreshStop)
+	t.activeSessionsRefreshStop = nil
+}
+
+func (t *tui) refreshActiveSessionsFromBackground() {
+	sessions, err := t.serverService.ListActiveSessions()
+	if t.app == nil {
+		return
+	}
+
+	t.app.QueueUpdateDraw(func() {
+		if t.sessions == nil {
+			return
+		}
+		if err != nil {
+			t.sessions.SetText(colorText(CurrentTheme.Error, "Failed to load active sessions"))
+			return
+		}
+		t.sessions.SetSessions(sessions)
+	})
 }
 
 func (t *tui) updateListTitle() {

@@ -76,8 +76,11 @@ func formatActiveSessionLine(session domain.ActiveSession) string {
 		colorText(CurrentTheme.MetaText, fmt.Sprintf("%d", session.PID)),
 		colorText(CurrentTheme.AliasText, tview.Escape(alias)),
 	}
+	if session.Destination != "" && session.Destination != alias {
+		parts = append(parts, colorText(CurrentTheme.DimText, tview.Escape(session.Destination)))
+	}
 	if len(session.Forwards) > 0 {
-		parts = append(parts, colorText(CurrentTheme.HostText, strings.Join(session.Forwards, ", ")))
+		parts = append(parts, colorText(CurrentTheme.HostText, "fwd "+strings.Join(session.Forwards, ", ")))
 	}
 	return strings.Join(parts, "  ")
 }
