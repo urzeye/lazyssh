@@ -257,8 +257,6 @@ make run
 如果你觉得 LazySSH 有帮助，并希望支持原作者，可以考虑给上游仓库点一个 **star**，并加入它的 [stargazers](https://github.com/Adembc/lazyssh/stargazers)。
 
 你也可以通过 [Buy Me a Coffee](https://www.buymeacoffee.com/adembc) 支持原作者 Adembc。
-<br/>
-<a href="https://buymeacoffee.com/adembc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" width="200" alt="Buy Me A Coffee for original author Adembc"></a>
 
 ---
 

@@ -257,8 +257,6 @@ This repository is independently maintained. The links below are the original au
 If you find LazySSH useful and want to support the original author, please consider giving the upstream repository a **star** and joining its [stargazers](https://github.com/Adembc/lazyssh/stargazers).
 
 You can also support the original author, Adembc, by [buying them a coffee](https://www.buymeacoffee.com/adembc).
-<br/>
-<a href="https://buymeacoffee.com/adembc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" width="200" alt="Buy Me A Coffee for original author Adembc"></a>
 
 ---
 
