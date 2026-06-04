@@ -2,7 +2,7 @@ name: release
 on:
   push:
     tags:
-      - 'lazyssh-*'
+      - 'v*'
 
 permissions:
   contents: write
@@ -21,12 +21,19 @@ jobs:
           go-version-file: go.mod
       - name: Validate release tag
         run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^lazyssh-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-            echo "Release tag must use lazyssh-YYYY-MM-DD, got ${GITHUB_REF_NAME}" >&2
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v([0-9]{4})\.([1-9]|1[0-2])\.([1-9]|[12][0-9]|3[01])$ ]]; then
+            echo "Release tag must use vYYYY.M.D without leading zeroes, got ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
-          release_date="${GITHUB_REF_NAME#lazyssh-}"
-          date -d "${release_date}" "+%Y-%m-%d" >/dev/null
+
+          release_version="${GITHUB_REF_NAME#v}"
+          release_date="$(printf "%04d-%02d-%02d" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")"
+          normalized_version="$(date -d "${release_date}" "+%Y.%-m.%-d")"
+          if [[ "${normalized_version}" != "${release_version}" ]]; then
+            echo "Release tag date is invalid: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
           echo "RELEASE_DATE=${release_date}" >> "$GITHUB_ENV"
       - name: Check existing release
         id: release_check

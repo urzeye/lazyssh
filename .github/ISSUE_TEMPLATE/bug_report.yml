@@ -21,7 +21,7 @@ body:
     id: lazyssh-version
     attributes:
       label: LazySSH Version
-      placeholder: lazyssh-2026-06-04
+      placeholder: v2026.6.4
     validations:
       required: true
 
