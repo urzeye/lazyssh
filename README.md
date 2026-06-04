@@ -190,13 +190,13 @@ lazyssh
 If you want to pin a specific release, specify the version explicitly:
 
 ```bash
-mise use -g github:urzeye/lazyssh@2026-06-04
+mise use -g github:urzeye/lazyssh@lazyssh-2026-06-04
 ```
 
 Notes:
 
 - This uses the `github:` backend in `mise`, which downloads the matching release asset from `urzeye/lazyssh`
-- Release tags use `YYYY-MM-DD` dates so upstream PRs and issues before that release date can be skipped during the next sync pass
+- Release tags use `lazyssh-YYYY-MM-DD`, and release titles use `lazyssh YYYY-MM-DD`, so upstream PRs and issues before that release date can be skipped during the next sync pass
 - `mise` writes the selected version into your global config, so `lazyssh` becomes available in all terminals afterward
 
 ### Option 2: Build from Source
