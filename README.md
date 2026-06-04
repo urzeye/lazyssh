@@ -250,6 +250,18 @@ Tip: the hint area at the top of the list shows the most common shortcuts so the
 
 ---
 
+## ⭐ Original Author Support
+
+This repository is independently maintained. The links below are the original author's support links from the upstream [`Adembc/lazyssh`](https://github.com/Adembc/lazyssh) project, not the funding links for this fork.
+
+If you find LazySSH useful and want to support the original author, please consider giving the upstream repository a **star** and joining its [stargazers](https://github.com/Adembc/lazyssh/stargazers).
+
+You can also support the original author, Adembc, by [buying them a coffee](https://www.buymeacoffee.com/adembc).
+<br/>
+<a href="https://buymeacoffee.com/adembc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" width="200" alt="Buy Me A Coffee for original author Adembc"></a>
+
+---
+
 ## 🙏 Credits
 
 - Special thanks to the original [`lazyssh`](https://github.com/Adembc/lazyssh) project and its author/maintainers for creating the foundation this fork builds on

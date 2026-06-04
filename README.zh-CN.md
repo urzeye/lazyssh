@@ -190,13 +190,13 @@ lazyssh
 如果你希望固定某个版本，也可以显式指定版本号：
 
 ```bash
-mise use -g github:urzeye/lazyssh@lazyssh-2026-06-04
+mise use -g github:urzeye/lazyssh@v2026.6.4
 ```
 
 说明：
 
 - 这里使用的是 `mise` 的 `github:` backend，会直接从 `urzeye/lazyssh` 的 Release 下载对应平台的二进制包
-- Release tag 使用 `lazyssh-YYYY-MM-DD`，Release 标题使用 `lazyssh YYYY-MM-DD`，下一次同步上游时可以跳过该日期之前的 PR 和 issue
+- Release tag 使用 `vYYYY.M.D`，Release 标题使用 `lazyssh YYYY-MM-DD`，下一次同步上游时可以跳过该日期之前的 PR 和 issue
 - `mise` 会把版本写入全局配置，后续在任意终端里都可以直接使用 `lazyssh`
 
 ### 方式二：从源码构建
@@ -247,6 +247,18 @@ make run
 | `Esc` | 取消 |
 
 提示：列表顶部的提示栏会显示最常用的快捷键，方便随时查看。
+
+---
+
+## ⭐ 原作者支持入口
+
+本仓库现在是独立维护的 fork。下面这些链接是上游原项目 [`Adembc/lazyssh`](https://github.com/Adembc/lazyssh) 中原作者 Adembc 提供的支持入口，不是当前 fork 维护者的 Funding / Sponsor 入口。
+
+如果你觉得 LazySSH 有帮助，并希望支持原作者，可以考虑给上游仓库点一个 **star**，并加入它的 [stargazers](https://github.com/Adembc/lazyssh/stargazers)。
+
+你也可以通过 [Buy Me a Coffee](https://www.buymeacoffee.com/adembc) 支持原作者 Adembc。
+<br/>
+<a href="https://buymeacoffee.com/adembc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" width="200" alt="Buy Me A Coffee for original author Adembc"></a>
 
 ---
 
