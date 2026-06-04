@@ -196,7 +196,7 @@ mise use -g github:urzeye/lazyssh@v2026.6.4
 说明：
 
 - 这里使用的是 `mise` 的 `github:` backend，会直接从 `urzeye/lazyssh` 的 Release 下载对应平台的二进制包
-- Release tag 使用 `vYYYY.M.D`，Release 标题使用 `lazyssh YYYY-MM-DD`，下一次同步上游时可以跳过该日期之前的 PR 和 issue
+- Release tag 和 Release name 都使用 `vYYYY.M.D`，下一次同步上游时可以跳过该日期之前的 PR 和 issue
 - `mise` 会把版本写入全局配置，后续在任意终端里都可以直接使用 `lazyssh`
 
 ### 方式二：从源码构建

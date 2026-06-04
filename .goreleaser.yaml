@@ -54,7 +54,7 @@ release:
   github:
     owner: urzeye
     name: lazyssh
-  name_template: "{{ .ProjectName }} {{ .Env.RELEASE_DATE }}"
+  name_template: "{{ .Env.RELEASE_NAME }}"
 
   footer: >-
     

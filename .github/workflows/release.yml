@@ -34,7 +34,7 @@ jobs:
             exit 1
           fi
 
-          echo "RELEASE_DATE=${release_date}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
       - name: Check existing release
         id: release_check
         env:
