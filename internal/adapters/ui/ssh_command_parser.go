@@ -207,12 +207,12 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 	}
 	key = strings.ToLower(key)
 	if key == "proxyjump" {
-		if server.ProxyCommand == "" && (server.ProxyJump == "" || server.ProxyJump == sessionTypeNone) {
+		if server.ProxyCommand == "" && server.ProxyJump == "" {
 			server.ProxyJump = value
 		}
 		return nil
 	}
-	if key == "proxycommand" && server.ProxyJump != "" && server.ProxyJump != sessionTypeNone {
+	if key == "proxycommand" && server.ProxyJump != "" {
 		return nil
 	}
 	if key == "port" {

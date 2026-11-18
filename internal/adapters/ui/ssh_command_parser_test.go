@@ -52,11 +52,68 @@ func TestImportedProxyDirectiveOrder(t *testing.T) {
 		{`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`, "bastion", ""},
 		{`ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`, "", "nc %h %p"},
 		{`ssh -o ProxyCommand=none -o ProxyJump=bastion host`, "", "none"},
-		{`ssh -o ProxyJump=none -o ProxyCommand=netcat host`, "none", "netcat"},
+		{`ssh -o ProxyJump=none -o ProxyCommand=netcat host`, "none", ""},
+		{`ssh -o ProxyJump=none -o ProxyJump=bastion host`, "none", ""},
 	} {
 		server, err := ParseSSHCommand(tc.command)
 		if err != nil || server.ProxyJump != tc.jump || server.ProxyCommand != tc.proxy {
 			t.Errorf("%s: jump=%q proxy=%q %v", tc.command, server.ProxyJump, server.ProxyCommand, err)
+		}
+	}
+}
+
+func TestImportedProxyMatchesOpenSSH(t *testing.T) {
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Skip("OpenSSH unavailable")
+	}
+	summary := func(output []byte) string {
+		values := make(map[string]string)
+		for _, line := range strings.Split(string(output), "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), " ", 2)
+			if len(parts) == 2 {
+				values[parts[0]] = parts[1]
+			}
+		}
+		if jump := values["proxyjump"]; jump != "" && jump != "none" {
+			return "jump:" + jump
+		}
+		if command := values["proxycommand"]; command != "" && command != "none" {
+			return "command:" + command
+		}
+		return "direct"
+	}
+	for _, command := range []string{`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`, `ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`, `ssh -o ProxyCommand=none -o ProxyJump=bastion host`, `ssh -o ProxyJump=none -o ProxyCommand=netcat host`, `ssh -o ProxyJump=none -o ProxyJump=bastion host`} {
+		dir := t.TempDir()
+		original := filepath.Join(dir, "original")
+		saved := filepath.Join(dir, "saved")
+		for _, path := range []string{original, saved} {
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		tokens, err := splitSSHCommand(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, err := exec.Command(ssh, append([]string{"-G", "-F", original}, tokens[1:]...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("original config: %v\n%s", err, before)
+		}
+		server, err := ParseSSHCommand(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo := ssh_config_file.NewRepository(zap.NewNop().Sugar(), saved, filepath.Join(dir, "metadata.json"))
+		if err := repo.AddServer(server); err != nil {
+			t.Fatal(err)
+		}
+		after, err := exec.Command(ssh, "-G", "-F", saved, server.Alias).CombinedOutput()
+		if err != nil {
+			t.Fatalf("saved config: %v\n%s", err, after)
+		}
+		if summary(before) != summary(after) {
+			t.Fatalf("%s: proxy changed from %q to %q", command, summary(before), summary(after))
 		}
 	}
 }
