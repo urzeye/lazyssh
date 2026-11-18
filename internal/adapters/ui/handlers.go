@@ -225,6 +225,7 @@ func (t *tui) handleSearchInput(query string) {
 		sortServersForUI(filtered, t.sortMode)
 	}
 	t.serverList.UpdateServers(filtered)
+	_ = t.serverList.SelectIndex(0) // A changed search selects its best ranked match.
 	if len(filtered) == 0 {
 		t.details.ShowEmpty()
 	}

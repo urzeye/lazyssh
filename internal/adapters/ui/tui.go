@@ -15,6 +15,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -97,10 +98,11 @@ func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit s
 	return view
 }
 
-func (t *tui) Run() error {
+func (t *tui) Run() (runErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			t.logger.Errorw("panic recovered", "error", r)
+			runErr = fmt.Errorf("TUI failed: %v", r)
 		}
 	}()
 	t.app.EnableMouse(true)
@@ -325,7 +327,7 @@ func (t *tui) captureMainUIState() mainUIState {
 	if t.app != nil {
 		focus := t.app.GetFocus()
 		switch {
-		case focus == t.searchBar:
+		case t.searchBar != nil && t.searchBar.HasFocus():
 			state.focus = focusSearch
 		case t.isServerListFocused():
 			state.focus = focusServerList
