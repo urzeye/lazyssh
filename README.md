@@ -17,6 +17,9 @@ This repository is an enhanced fork of the original [`lazyssh`](https://github.c
 - Dark/light theme support with a persisted `T` toggle
 - A set of high-value fixes: backspace works correctly in inputs, `j/k` navigation survives mouse clicks, usernames support `@` and `:`, and alias alignment is more stable
 - Safer config writes for dotfiles and multi-machine sync: symlinks are preserved and `IdentityFile` is normalized to portable `~/.ssh/...` paths whenever possible
+- Preserve negated Host patterns, insert new hosts before matching defaults, and keep search typing and list selection stable after mouse clicks and refreshes
+- Clone hosts (`C`), import an SSH command from the clipboard (`v`), generate SCP commands (`P`), and open system SFTP (`F`)
+- Start with a CLI filter, connect to an exact alias directly, or exit after a session; connection failures retain their diagnostics
 
 ---
 
@@ -61,6 +64,24 @@ It lets you browse, search, connect to, edit, and organize the hosts defined in 
   - Paste a custom public key manually
   - Generate a new key pair and deploy it to the target host
   - Append it to `~/.ssh/authorized_keys` with the correct permissions
+
+### Connection and file workflows
+
+```bash
+lazyssh prod                         # Open the picker with an initial fuzzy filter
+lazyssh --filter prod                # Equivalent explicit filter
+lazyssh --connect production         # Connect to an exact configured alias without the TUI
+lazyssh --exit-after-session         # Exit when the chosen SSH/SFTP session ends
+lazyssh --sshconfig ~/.ssh/work --connect production
+```
+
+`--connect` also accepts secondary aliases from a multi-alias Host line. Unknown aliases and conflicting selection flags return an error; SSH exit codes are preserved. Filters cannot be combined with `--connect`.
+
+`C` opens a prefilled Add form with a unique alias and fresh connection statistics. `v` parses an SSH command without executing it and opens the same form for review. Common flags (`-p`, `-i`, `-J`, `-L/-R/-D`, `-l`, `-A/-X/-Y`, `-t`, `-o`) and quoted arguments are supported. Unsupported flags (including a separate `-F` config) and shell operators are rejected explicitly.
+
+`P` opens an upload/download SCP command helper with a preview and clipboard copy; it does not start a transfer. Commands preserve the selected alias and current `-F` root config. On Windows they use PowerShell quoting; elsewhere they use POSIX shell quoting. `F` starts the installed system `sftp` client with the same alias/config and returns to the picker when it ends. Both remain available in read-only mode.
+
+Tag-only edits update metadata without rewriting SSH config. Managed-mode insertion changes only the managed file: earlier root/global rules retain their OpenSSH precedence, so place the managed `Include` before defaults intended to be overridable.
 
 ---
 
@@ -227,6 +248,10 @@ make run
 | `g` | Ping the current host |
 | `r` | Refresh background data |
 | `a` | Add a host |
+| `C` | Clone the selected host into an Add form |
+| `v` | Paste an SSH command into an Add form |
+| `P` | Generate and copy an SCP upload/download command |
+| `F` | Open system SFTP for the selected host |
 | `e` | Edit a host |
 | `t` | Edit tags |
 | `d` | Delete a host |
