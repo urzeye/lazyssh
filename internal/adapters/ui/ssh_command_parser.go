@@ -1,3 +1,17 @@
+// Copyright 2025.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package ui
 
 import (
@@ -127,16 +141,19 @@ func applyPastedSSHFlag(server *domain.Server, flag byte) error {
 		server.ForwardX11Trusted = "yes"
 		return nil
 	}
-	options := map[byte][2]string{
-		'A': {"ForwardAgent", "yes"}, 'a': {"ForwardAgent", "no"},
-		'X': {"ForwardX11", "yes"}, 'x': {"ForwardX11", "no"}, 'Y': {"ForwardX11Trusted", "yes"},
-		'C': {"Compression", "yes"}, '4': {"AddressFamily", "inet"}, '6': {"AddressFamily", "inet6"},
-		'T': {"RequestTTY", "no"}, 'N': {"SessionType", "none"}, 's': {"SessionType", "subsystem"}, 'q': {"LogLevel", "QUIET"},
+	options := map[byte]struct {
+		field *string
+		value string
+	}{
+		'A': {&server.ForwardAgent, "yes"}, 'a': {&server.ForwardAgent, "no"},
+		'X': {&server.ForwardX11, "yes"}, 'x': {&server.ForwardX11, "no"},
+		'C': {&server.Compression, "yes"}, '4': {&server.AddressFamily, "inet"}, '6': {&server.AddressFamily, "inet6"},
+		'T': {&server.RequestTTY, "no"}, 'N': {&server.SessionType, "none"}, 's': {&server.SessionType, "subsystem"}, 'q': {&server.LogLevel, "QUIET"},
 	}
 	if flag == 't' {
-		if server.RequestTTY == "yes" {
+		if server.RequestTTY == "yes" || server.RequestTTY == "force" {
 			server.RequestTTY = "force"
-		} else if server.RequestTTY == "" {
+		} else {
 			server.RequestTTY = "yes"
 		}
 		return nil
@@ -153,7 +170,8 @@ func applyPastedSSHFlag(server *domain.Server, flag byte) error {
 		return nil
 	}
 	if option, ok := options[flag]; ok {
-		return applyPastedSSHOption(server, option[0], option[1])
+		*option.field = option.value
+		return nil
 	}
 	return fmt.Errorf("unsupported SSH option -%c; remove it or enter its settings in the form", flag)
 }
