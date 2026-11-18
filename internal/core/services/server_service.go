@@ -37,6 +37,7 @@ import (
 type serverService struct {
 	serverRepository ports.ServerRepository
 	logger           *zap.SugaredLogger
+	sshCommand       func(args ...string) *exec.Cmd
 
 	fwMu     sync.Mutex
 	forwards map[string][]*os.Process
@@ -47,6 +48,10 @@ func NewServerService(logger *zap.SugaredLogger, sr ports.ServerRepository) port
 	return &serverService{
 		logger:           logger,
 		serverRepository: sr,
+		sshCommand: func(args ...string) *exec.Cmd {
+			// #nosec G204 -- arguments are passed directly to the system OpenSSH client.
+			return exec.Command("ssh", args...)
+		},
 	}
 }
 
@@ -320,7 +325,7 @@ func (s *serverService) SSH(alias string) error {
 	s.logger.Infow("ssh start", "alias", alias)
 	// #nosec G204 -- lazyssh intentionally delegates to the user's local ssh client
 	// using the selected alias and configured SSH config path.
-	cmd := exec.Command("ssh", "-F", s.serverRepository.GetConfigFile(), alias)
+	cmd := s.sshCommand("-F", s.serverRepository.GetConfigFile(), alias)
 	if err := runInteractiveSSH(cmd); err != nil {
 		s.logger.Errorw("ssh command failed", "alias", alias, "error", err)
 		return err
@@ -340,7 +345,7 @@ func (s *serverService) SSHWithArgs(alias string, extraArgs []string) error {
 	args := append([]string{}, extraArgs...)
 	args = append(args, "-F", s.serverRepository.GetConfigFile(), alias)
 	// #nosec G204
-	cmd := exec.Command("ssh", args...)
+	cmd := s.sshCommand(args...)
 	if err := runInteractiveSSH(cmd); err != nil {
 		s.logger.Errorw("ssh (with args) failed", "alias", alias, "error", err)
 		return err
@@ -363,7 +368,7 @@ func (s *serverService) StartForward(alias string, extraArgs []string) (int, err
 	extraArgs = append(extraArgs, "-F", s.serverRepository.GetConfigFile(), "-N", alias)
 
 	// #nosec G204
-	cmd := exec.Command("ssh", extraArgs...)
+	cmd := s.sshCommand(extraArgs...)
 
 	// Detach from TTY: discard stdio
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
@@ -476,7 +481,8 @@ func (s *serverService) IsReadOnly() bool {
 func (s *serverService) Ping(server domain.Server) (bool, time.Duration, error) {
 	start := time.Now()
 
-	host, port, ok := resolveSSHDestination(server.Alias)
+	cmd := s.sshCommand("-G", "-F", s.serverRepository.GetConfigFile(), server.Alias)
+	host, port, ok := resolveSSHDestination(cmd)
 	if !ok {
 
 		host = strings.TrimSpace(server.Host)
@@ -500,14 +506,9 @@ func (s *serverService) Ping(server domain.Server) (bool, time.Duration, error) 
 	return true, time.Since(start), nil
 }
 
-// resolveSSHDestination uses `ssh -G <alias>` to extract HostName and Port from the user's SSH config.
+// resolveSSHDestination extracts HostName and Port from the configured ssh -G command.
 // Returns host, port, ok where ok=false if resolution failed.
-func resolveSSHDestination(alias string) (string, int, bool) {
-	alias = strings.TrimSpace(alias)
-	if alias == "" {
-		return "", 0, false
-	}
-	cmd := exec.Command("ssh", "-G", alias)
+func resolveSSHDestination(cmd *exec.Cmd) (string, int, bool) {
 	out, err := cmd.Output()
 	if err != nil {
 		return "", 0, false
@@ -532,11 +533,8 @@ func resolveSSHDestination(alias string) (string, int, bool) {
 			}
 		}
 	}
-	if host == "" {
-		host = alias
-	}
-	if port == 0 {
-		port = 22
+	if host == "" || port < 1 || port > 65535 || scanner.Err() != nil {
+		return "", 0, false
 	}
 	return host, port, true
 }

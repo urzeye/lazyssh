@@ -14,6 +14,11 @@ func TestSSHSessionHelper(t *testing.T) {
 	if mode == "" {
 		return
 	}
+	if mode == "resolve" {
+		fmt.Println("hostname 127.0.0.1")
+		fmt.Println("port " + os.Getenv("LAZYSSH_TEST_PORT"))
+		os.Exit(0)
+	}
 	if mode == "fail" {
 		fmt.Fprintln(os.Stderr, "Permission denied (publickey).")
 		os.Exit(255)
