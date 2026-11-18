@@ -121,6 +121,10 @@ func (r *Repository) createHostFromServer(server domain.Server) *ssh_config.Host
 	for _, identityFile := range server.IdentityFiles {
 		r.addKVNodeIfNotEmpty(host, "IdentityFile", normalizeIdentityFilePath(identityFile))
 	}
+	// These options compete in OpenSSH; preserve the original new-host order
+	// before the shared updater visits its unordered scalar settings.
+	r.addKVNodeIfNotEmpty(host, "ProxyJump", server.ProxyJump)
+	r.addKVNodeIfNotEmpty(host, "ProxyCommand", server.ProxyCommand)
 
 	r.updateHostNodes(host, server)
 

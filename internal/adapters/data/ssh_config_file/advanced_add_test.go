@@ -16,7 +16,9 @@ package ssh_config_file
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/urzeye/lazyssh/internal/core/domain"
@@ -44,5 +46,33 @@ func TestAddServerRetainsAdvancedOptions(t *testing.T) {
 	got := servers[0]
 	if got.IPQoS != server.IPQoS || got.SessionType != server.SessionType || got.BindAddress != server.BindAddress || got.AddressFamily != server.AddressFamily || got.ExitOnForwardFailure != server.ExitOnForwardFailure || got.CanonicalizeHostname != server.CanonicalizeHostname || got.CanonicalDomains != server.CanonicalDomains || got.GatewayPorts != server.GatewayPorts || got.CheckHostIP != server.CheckHostIP || got.FingerprintHash != server.FingerprintHash {
 		t.Fatalf("new host lost advanced options: %+v", got)
+	}
+}
+
+func TestNewHostProxyPrecedenceIsDeterministic(t *testing.T) {
+	repo := &Repository{}
+	server := domain.Server{Alias: "example.invalid", Host: "192.0.2.1", ProxyJump: "bastion", ProxyCommand: "nc %h %p"}
+	var config string
+	for i := 0; i < 20; i++ {
+		config = repo.createHostFromServer(server).String()
+		jump, command := strings.Index(config, "ProxyJump "), strings.Index(config, "ProxyCommand ")
+		if jump < 0 || command < 0 || jump > command {
+			t.Fatalf("new-host proxy priority changed:\n%s", config)
+		}
+	}
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Skip("OpenSSH unavailable for effective-config assertion")
+	}
+	path := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(ssh, "-G", "-F", path, server.Alias).CombinedOutput()
+	if err != nil {
+		t.Fatalf("ssh -G: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "proxyjump bastion") {
+		t.Fatalf("OpenSSH did not retain jump priority:\n%s", output)
 	}
 }
