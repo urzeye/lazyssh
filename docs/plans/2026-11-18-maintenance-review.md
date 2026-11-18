@@ -2,6 +2,8 @@
 
 Date: 2026-11-18. Baseline: `cee1c46`. Code reviewed through `9e2b880`.
 
+Follow-up: a subsequent static review identified six regressions. Their fixes and final regression evidence are recorded in [Review fixes](2026-11-18-review-fixes.md).
+
 ## Completed scope
 
 | Item | Implementation commit | Verification |

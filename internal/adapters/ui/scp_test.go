@@ -19,7 +19,30 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rivo/tview"
+	"github.com/urzeye/lazyssh/internal/core/domain"
+	"github.com/urzeye/lazyssh/internal/core/ports"
 )
+
+type scpHelperService struct{ ports.ServerService }
+
+func (s scpHelperService) GetConfigFile() string { return "config" }
+
+func TestSCPHelperOpensWithInstalledClient(t *testing.T) {
+	if _, err := exec.LookPath("scp"); err != nil {
+		t.Skip("SCP client unavailable")
+	}
+	app := tview.NewApplication()
+	defer app.Stop()
+	list := NewServerList()
+	list.UpdateServers([]domain.Server{{Alias: "prod"}})
+	view := &tui{app: app, serverList: list, serverService: scpHelperService{}}
+	view.handleSCP()
+	if _, ok := app.GetFocus().(*tview.DropDown); !ok {
+		t.Fatalf("SCP helper did not open its form: focus %T", app.GetFocus())
+	}
+}
 
 func TestSCPCommandPreservesAliasAndConfig(t *testing.T) {
 	for _, upload := range []bool{true, false} {

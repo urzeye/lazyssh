@@ -79,7 +79,11 @@ lazyssh --sshconfig ~/.ssh/work --connect production
 
 `C` opens a prefilled Add form with a unique alias and fresh connection statistics. `v` parses an SSH command without executing it and opens the same form for review. Common flags (`-p`, `-i`, `-J`, `-L/-R/-D`, `-l`, `-A/-X/-Y`, `-t`, `-o`) and quoted arguments are supported. Unsupported flags (including a separate `-F` config) and shell operators are rejected explicitly.
 
+Import preserves Windows backslash paths on Windows and POSIX escapes elsewhere. Unquoted word-initial `#` starts a comment; quoted hashes remain literal. Destination users/ports retain OpenSSH argument precedence. Literal percent signs in a positional remote command are escaped for storage as `RemoteCommand`; explicit `-o RemoteCommand` templates retain their token expansion.
+
 `P` opens an upload/download SCP command helper with a preview and clipboard copy; it does not start a transfer. Commands preserve the selected alias and current `-F` root config. On Windows they use PowerShell quoting; elsewhere they use POSIX shell quoting. `F` starts the installed system `sftp` client with the same alias/config and returns to the picker when it ends. Both remain available in read-only mode.
+
+The SCP helper inspects the installed client once when opened. Clients advertising `-s` use explicit SFTP mode; older clients use separate remote-shell quoting so path spaces and metacharacters stay literal. Remote `~` paths expand on the server. Missing clients or unrecognized capability output produce an error instead of guessing a protocol.
 
 Tag-only edits update metadata without rewriting SSH config. Managed-mode insertion changes only the managed file: earlier root/global rules retain their OpenSSH precedence, so place the managed `Include` before defaults intended to be overridable.
 
