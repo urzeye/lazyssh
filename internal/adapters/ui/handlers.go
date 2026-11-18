@@ -39,7 +39,7 @@ const (
 
 func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	// Don't handle global keys when search has focus
-	if t.app.GetFocus() == t.searchBar {
+	if t.searchBar != nil && t.searchBar.HasFocus() {
 		return event
 	}
 
