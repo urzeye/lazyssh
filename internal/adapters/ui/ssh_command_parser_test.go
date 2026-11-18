@@ -41,3 +41,10 @@ func TestPastedCommandPreservesProxyAndRemoteCommand(t *testing.T) {
 		t.Fatalf("lost settings: %+v", server)
 	}
 }
+
+func TestPastedTrustedX11EnablesForwarding(t *testing.T) {
+	server, err := ParseSSHCommand("ssh -Y example")
+	if err != nil || server.ForwardX11 != "yes" || server.ForwardX11Trusted != "yes" {
+		t.Fatalf("-Y lost X11 forwarding: %+v %v", server, err)
+	}
+}

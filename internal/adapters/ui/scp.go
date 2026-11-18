@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -24,6 +26,17 @@ func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, re
 	}
 	if strings.HasPrefix(alias, "-") || strings.ContainsAny(alias, ":@") {
 		return "", fmt.Errorf("SCP requires a configured host alias")
+	}
+	if localPath == "~" || strings.HasPrefix(localPath, "~/") || strings.HasPrefix(localPath, "~\\") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if localPath == "~" {
+			localPath = home
+		} else {
+			localPath = filepath.Join(home, localPath[2:])
+		}
 	}
 	// A relative local filename containing ':' otherwise looks like a remote target.
 	if runtime.GOOS != "windows" && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {

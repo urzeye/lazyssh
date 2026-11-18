@@ -122,6 +122,11 @@ func applySSHDestination(server *domain.Server, target string) error {
 }
 
 func applyPastedSSHFlag(server *domain.Server, flag byte) error {
+	if flag == 'Y' {
+		server.ForwardX11 = "yes"
+		server.ForwardX11Trusted = "yes"
+		return nil
+	}
 	options := map[byte][2]string{
 		'A': {"ForwardAgent", "yes"}, 'a': {"ForwardAgent", "no"},
 		'X': {"ForwardX11", "yes"}, 'x': {"ForwardX11", "no"}, 'Y': {"ForwardX11Trusted", "yes"},

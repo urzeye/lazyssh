@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,19 @@ func TestSCPCommandPreservesAliasAndConfig(t *testing.T) {
 		if (localPos < remotePos) != upload {
 			t.Fatalf("wrong direction: %s", command)
 		}
+	}
+}
+
+func TestSCPExpandsLocalHomeWithoutExpandingRemoteHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	command, err := BuildSCPCommand("prod", "config", "~/file", "~/remote", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(command, shellQuote(filepath.Join(home, "file"))) || !strings.Contains(command, shellQuote("prod:~/remote")) {
+		t.Fatalf("wrong home expansion: %s", command)
 	}
 }
 
