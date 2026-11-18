@@ -1,120 +1,249 @@
-English | [简体中文](README.zh-CN.md)
-
 <div align="center">
-  <img src="./docs/logo.png" alt="lazyssh logo" width="600" height="600"/>
+  <img src="./docs/logo.png" alt="lazyssh logo" width="180" />
+  <h1>⚡ lazyssh</h1>
+  <p><b>A modern, keyboard-first terminal SSH manager designed for real-world SSH setups</b></p>
+  <p><i>Recursive OpenSSH <code>Include</code> • Dotfiles-friendly Managed Mode • Non-destructive Safe Writes • Instant Terminal Productivity</i></p>
+
+  <p>
+    English | <a href="README.zh-CN.md">简体中文</a>
+  </p>
+
+  <div>
+    <a href="https://github.com/urzeye/lazyssh/releases"><img src="https://img.shields.io/github/v/release/urzeye/lazyssh?style=flat-square&color=blue" alt="GitHub release" /></a>
+    <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/urzeye/lazyssh?style=flat-square&color=00ADD8" alt="Go Version" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/urzeye/lazyssh?style=flat-square&color=green" alt="License" /></a>
+    <a href="https://github.com/urzeye/lazyssh/actions/workflows/go.yml"><img src="https://img.shields.io/github/actions/workflow/status/urzeye/lazyssh/go.yml?branch=main&style=flat-square" alt="Build Status" /></a>
+    <a href="https://github.com/urzeye/lazyssh/releases"><img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey?style=flat-square" alt="Platform" /></a>
+  </div>
 </div>
 
-This repository is an enhanced fork of the original [`lazyssh`](https://github.com/Adembc/lazyssh), with a strong focus on real-world SSH setups used with dotfiles, `Include`, and multi-file config workflows. Key improvements include:
+---
 
-- Recursive support for `Include` and `conf.d` style SSH layouts instead of assuming a single `~/.ssh/config`
-- Managed mode: read the full config tree from the root config in real time while writing changes only to a dedicated managed file
-- Read-only protection for hosts coming from included or unmanaged files, with source markers in the UI to prevent accidental edits
-- New flags: `--sshconfig`, `--managed-mode`, `--managed-sshconfig`, and `--ssh-config-readonly`
-- Display of effective SSH values after applying `Host *`, pattern rules such as `Host lab-*`, and defaults inherited from the root config
-- Proper handling of quoted entries such as `Host "example-name"`
-- Better fuzzy search relevance across alias, hostname, user, and tags
-- Daily workflow improvements such as a collapsible search bar, `0/1/2` panel switching, copy-host support, and persisted sort mode
-- Dark/light theme support with a persisted `T` toggle
-- A set of high-value fixes: backspace works correctly in inputs, `j/k` navigation survives mouse clicks, usernames support `@` and `:`, and alias alignment is more stable
-- Safer config writes for dotfiles and multi-machine sync: symlinks are preserved and `IdentityFile` is normalized to portable `~/.ssh/...` paths whenever possible
-- Preserve negated Host patterns, insert new hosts before matching defaults, and keep search typing and list selection stable after mouse clicks and refreshes
-- Clone hosts (`C`), import an SSH command from the clipboard (`v`), generate SCP commands (`P`), and open system SFTP (`F`)
-- Start with a CLI filter, connect to an exact alias directly, or exit after a session; connection failures retain their diagnostics
+> [!NOTE]
+> **lazyssh is an independent, actively maintained continuation and enhanced fork of [Adembc/lazyssh](https://github.com/Adembc/lazyssh).**
+> The upstream repository is no longer actively maintained. This fork addresses real-world SSH workflows: multi-file `Include` configs, dotfiles synchronisation, managed write isolation, cascading pattern resolution, and rock-solid terminal ergonomics.
+> All foundational credit and appreciation go to the original creator, **[Adembc](https://github.com/Adembc)**.
 
 ---
 
-lazyssh is a terminal-based SSH manager inspired by `lazydocker` and `k9s`, but built specifically for SSH host management.
-It lets you browse, search, connect to, edit, and organize the hosts defined in your SSH config directly from the terminal, so you do not have to remember raw IP addresses or keep typing long `ssh` and `scp` commands by hand. The whole workflow is designed around fast keyboard-first operations.
+## 📑 Table of Contents
+
+- [💡 About lazyssh](#-about-lazyssh)
+- [🌟 Key Highlights](#-key-highlights)
+- [📷 Screenshots](#-screenshots)
+- [📦 Installation](#-installation)
+  - [Option 1: mise (Recommended)](#option-1-mise-recommended)
+  - [Option 2: Go Install](#option-2-go-install)
+  - [Option 3: Pre-compiled Binaries](#option-3-pre-compiled-binaries)
+  - [Option 4: Build from Source](#option-4-build-from-source)
+- [⚡ Quick Start & CLI Workflows](#-quick-start--cli-workflows)
+- [🧭 Deep Dive: Dotfiles & Managed Mode](#-deep-dive-dotfiles--managed-mode)
+- [🛡️ Safe Writes & Automatic Backups](#-safe-writes--automatic-backups)
+- [⌨️ Keyboard Shortcuts Reference](#️-keyboard-shortcuts-reference)
+- [🔐 Security Architecture](#-security-architecture)
+- [🤝 Contributing](#-contributing)
+- [📄 License & Attribution](#-license--attribution)
 
 ---
 
-## ✨ Features
+## 💡 About lazyssh
 
-### Host Management
-- Read and display hosts from `~/.ssh/config`
-- Add new hosts directly from the UI
-- Edit existing hosts through a tabbed form
-- Delete host entries safely
-- Pin and unpin frequently used hosts
-- Ping hosts to check whether they are reachable
+**lazyssh** is an interactive, keyboard-driven SSH manager for your terminal, inspired by tools like `lazydocker` and `k9s` but purpose-built for OpenSSH workflows.
 
-### Fast Navigation
-- Fuzzy search by alias, IP, user, or tag
-- Press `Enter` to connect to the selected host immediately
-- See currently running local SSH sessions in an auto-refreshing read-only panel
-- Organize hosts with tags such as `prod`, `dev`, and `test`
-- Sort by alias or last connection time, with reversible order
+Managing dozens of servers across cloud providers, home labs, jump hosts, and client environments often leaves developers drowning in forgotten IP addresses, complicated proxy flags, and fragile `~/.ssh/config` files. Most terminal pickers assume a simple flat file and overwrite custom comments or break symlinked dotfiles.
 
-### Advanced SSH Options
-- Port forwarding support: `LocalForward`, `RemoteForward`, and `DynamicForward`
-- Connection multiplexing for faster follow-up sessions
-- Advanced authentication settings, including keys, passwords, and agent forwarding
-- Security-related settings such as ciphers, MACs, and key exchange algorithms
-- Proxy settings such as `ProxyJump` and `ProxyCommand`
-- A tabbed editor that keeps large SSH configurations manageable
+**lazyssh solves this comprehensively:**
+- Recursively parses your entire OpenSSH `Include` hierarchy (e.g. `conf.d/`, OrbStack, Colima).
+- Isolates user edits into a dedicated managed file so your version-controlled root dotfiles stay untouched.
+- Computes cascading wildcards (`Host *`, `Host lab-*`) to display the true, effective connection configuration.
+- Operates strictly with non-destructive atomic writes and rolling backups.
+- Provides a lighting-fast keyboard navigation experience with fuzzy search, panel jumps, SCP command generation, SFTP launching, and port forwarding.
 
-### Key Management
-- Auto-discover local SSH keys with completion support
-- Switch between multiple keys quickly
+---
 
-### Planned Capabilities
-- File copy flows between the local machine and remote hosts with a friendlier picker
-- SSH public key deployment:
-  - Use a default local key such as `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub`
-  - Paste a custom public key manually
-  - Generate a new key pair and deploy it to the target host
-  - Append it to `~/.ssh/authorized_keys` with the correct permissions
+## 🌟 Key Highlights
 
-### Connection and file workflows
+### 📁 Advanced Config & Dotfiles Architecture
+- **Recursive `Include` Support**: Traverses full OpenSSH `Include` trees (including wildcards like `~/.ssh/conf.d/*.conf`, OrbStack, etc.) instead of assuming a single flat config file.
+- **Managed Mode (`--managed-mode`)**: Reads the complete config tree from your root config, but isolates all additions, updates, and deletions to a dedicated managed file (such as `~/.ssh/config.local`).
+- **Read-Only Protection**: Hosts originating from included or external files are visually tagged with `[inc]` and protected against accidental edits. A dedicated `--ssh-config-readonly` flag provides safe browsing mode.
+- **Effective Values Resolution**: Automatically computes and displays cascading OpenSSH directives (e.g., global `Host *` defaults, pattern-based `Host dev-*` rules, root inheritance) so you see the exact parameters OpenSSH will use.
+- **Safe Host Ordering**: Automatically places newly created hosts before matching wildcard rules to guarantee OpenSSH first-match precedence.
+- **Full Syntax Fidelity**: Robust handling of quoted host entries (`Host "example-name"`), multi-alias lines, and negated patterns (`Host !foo bar-*`).
+
+### 🛡️ Non-Destructive & Resilient File Writes
+- **Atomic File Swapping**: Configuration updates are written to temporary files and atomically renamed to prevent file corruption during sudden interruptions.
+- **Symlink Preservation**: Modifies symlink targets in-place instead of replacing symlinks with regular files, keeping dotfile repositories intact.
+- **Dual-Layer Backups**: Creates a baseline `.original.backup` before the very first modification, plus rolling timestamped backups (`config.local-YYYYMMDD-HHMMSS-lazyssh.backup`) with automatic 10-version rotation.
+- **Portable Identity Paths**: Normalizes private key paths under `$HOME` to portable `~/.ssh/...` formats for seamless multi-machine dotfile sharing.
+- **Metadata Separation**: Tags, pinned states, and connection statistics are saved to `~/.lazyssh/metadata.json` without dirtying or rewriting your SSH config files.
+
+### ⌨️ Terminal UX & Keyboard Ergonomics
+- **Fast Fuzzy Search**: Multi-field fuzzy search ranks hosts by relevance across alias, hostname, user, and tags.
+- **Numbered Panel Switching**: Instantly jump between Search (<kbd>0</kbd> or <kbd>/</kbd>), Host List (<kbd>1</kbd>), and Details (<kbd>2</kbd>).
+- **Collapsible Search Bar**: Press <kbd>/</kbd> to show/hide the search bar and maximize vertical terminal space.
+- **Persisted Sorting & Themes**: Toggle sorting by Alias or Last Connection (<kbd>s</kbd>), reverse order (<kbd>S</kbd>), and toggle Dark/Light themes (<kbd>T</kbd>) with persisted preferences.
+- **Mouse & Terminal Resiliency**: Safe mouse-click handling ensures <kbd>j</kbd>/<kbd>k</kbd> navigation, focus state, and input backspaces remain completely reliable.
+
+### 🚀 Connection, Forwarding & Transfer Helpers
+- **Instant Connection**: Hit <kbd>Enter</kbd> to launch OpenSSH. Diagnostic error output is retained if a connection fails.
+- **Clone Host (<kbd>C</kbd>)**: Duplicate any existing host configuration into an Add form with an auto-incremented alias and clean stats.
+- **Import from Clipboard (<kbd>v</kbd>)**: Paste a raw `ssh user@host -p 2222 -i ...` command line directly into a structured form with automatic OpenSSH flag parsing.
+- **SCP Command Helper (<kbd>P</kbd>)**: Interactive upload/download SCP command builder with automatic client capability detection (OpenSSH `-s` SFTP protocol vs legacy quoting, POSIX vs Windows PowerShell quoting) and 1-click clipboard copy.
+- **System SFTP Integration (<kbd>F</kbd>)**: Launch the system `sftp` client directly for the selected host and cleanly return to lazyssh upon exit.
+- **Port Forwarding Wizard (<kbd>f</kbd> / <kbd>x</kbd>)**: Setup Local (`-L`), Remote (`-R`), or Dynamic SOCKS5 (`-D`) tunnels with forward-only or forward+SSH modes, and stop active tunnels with one keypress.
+- **Active Session Monitor**: Auto-refreshing read-only panel displaying currently active local SSH processes.
+- **Ping Health Check (<kbd>g</kbd>)**: Check host reachability on demand using actual configured target parameters.
+
+---
+
+## 📷 Screenshots
+
+<details open>
+<summary><b>Click to expand / collapse screenshots</b></summary>
+<br>
+
+<div align="center">
+
+### 📋 Main Host Management & Active Sessions
+<img src="./docs/list server.png" alt="Host list view and active sessions" width="900" />
+<p><i>Browse configured hosts, inspect real-time effective SSH options, monitor active local sessions, and view source config markers.</i></p>
+
+---
+
+### 🔎 Intelligent Fuzzy Search
+<img src="./docs/search.png" alt="Fuzzy host search" width="900" />
+<p><i>Search across aliases, hostnames, usernames, and tags with smart relevance ranking.</i></p>
+
+---
+
+### ➕ Tabbed Host Editor (5 Categories)
+<img src="./docs/add server.png" alt="Tabbed host editor" width="900" />
+<p><i>Full control over OpenSSH options organized into <b>Basic</b>, <b>Connection</b>, <b>Forwarding</b>, <b>Authentication</b>, and <b>Advanced</b> tabs.</i></p>
+
+---
+
+### 🔐 Instant SSH Connection & SCP Helper
+<img src="./docs/ssh.png" alt="SSH connection and command helpers" width="900" />
+<p><i>Launch direct sessions, build robust SCP commands, or open SFTP file management with zero friction.</i></p>
+
+---
+
+### 🚀 Startup Loader
+<img src="./docs/loader.png" alt="Startup screen" width="800" />
+<p><i>Clean, asynchronous startup loading your complete Include hierarchy.</i></p>
+
+</div>
+
+</details>
+
+---
+
+## 📦 Installation
+
+### Option 1: mise (Recommended)
+
+If you use [mise-en-place](https://mise.jdx.dev/), install lazyssh directly from GitHub Releases:
 
 ```bash
-lazyssh prod                         # Open the picker with an initial fuzzy filter
-lazyssh --filter prod                # Equivalent explicit filter
-lazyssh --connect production         # Connect to an exact configured alias without the TUI
-lazyssh --exit-after-session         # Exit when the chosen SSH/SFTP session ends
-lazyssh --sshconfig ~/.ssh/work --connect production
+# Install and activate globally
+mise use -g github:urzeye/lazyssh@latest
+
+# Verify installation
+lazyssh --version
 ```
 
-`--connect` also accepts secondary aliases from a multi-alias Host line. Unknown aliases and conflicting selection flags return an error; SSH exit codes are preserved. Filters cannot be combined with `--connect`.
+To pin a specific version:
+```bash
+mise use -g github:urzeye/lazyssh@v2026.6.4
+```
 
-`C` opens a prefilled Add form with a unique alias and fresh connection statistics. `v` parses an SSH command without executing it and opens the same form for review. Common flags (`-p`, `-i`, `-J`, `-L/-R/-D`, `-l`, `-A/-X/-Y`, `-t`, `-o`) and quoted arguments are supported. Unsupported flags (including a separate `-F` config) and shell operators are rejected explicitly.
+### Option 2: Go Install
 
-Import preserves Windows backslash paths on Windows and POSIX escapes elsewhere. Unquoted word-initial `#` starts a comment; quoted hashes remain literal. Destination users/ports retain OpenSSH argument precedence. Literal percent signs in a positional remote command are escaped for storage as `RemoteCommand`; explicit `-o RemoteCommand` templates retain their token expansion.
+If you have Go installed (Go 1.22+):
 
-Copied SSH commands keep `RemoteCommand` as a `-o` option, preserving percent expansion when executed or imported again. Saving `SessionType` (including imported `-N`/`-s`) requires a client that supports it, normally OpenSSH 8.7+. An isolated offline probe rejects unsupported settings before changing config or metadata.
+```bash
+go install github.com/urzeye/lazyssh/cmd@latest
+```
 
-`P` opens an upload/download SCP command helper with a preview and clipboard copy; it does not start a transfer. Commands preserve the selected alias and current `-F` root config. On Windows they use PowerShell quoting; elsewhere they use POSIX shell quoting. `F` starts the installed system `sftp` client with the same alias/config and returns to the picker when it ends. Both remain available in read-only mode.
+Ensure your `$GOPATH/bin` or `$HOME/go/bin` is in your `$PATH`.
 
-The SCP helper inspects the installed client once when opened. Clients advertising `-s` use explicit SFTP mode; older clients use separate remote-shell quoting so path spaces and metacharacters stay literal. Remote `~` paths expand on the server. Missing clients or unrecognized capability output produce an error instead of guessing a protocol.
+### Option 3: Pre-compiled Binaries
 
-Legacy remote paths use backslash escapes compatible with SCP's receive-side filename check; that check remains enabled. Windows commands launch the native process with explicit arguments, supporting PowerShell 5.1 and 7 without changing the caller's argument-passing preference.
+Download pre-compiled binaries for your operating system and architecture from the [GitHub Releases](https://github.com/urzeye/lazyssh/releases) page:
 
-Tag-only edits update metadata without rewriting SSH config. Managed-mode insertion changes only the managed file: earlier root/global rules retain their OpenSSH precedence, so place the managed `Include` before defaults intended to be overridable.
+| OS | Architecture | Archive Format |
+|---|---|---|
+| **Linux** | `x86_64` (amd64), `aarch64` (arm64), `i386`, `armv6` | `.tar.gz` |
+| **macOS** | `Apple Silicon` (arm64), `Intel` (amd64) | `.tar.gz` |
+| **Windows** | `x86_64` (amd64), `arm64`, `i386` | `.zip` |
+
+Unpack the archive and move the `lazyssh` binary into your system `PATH` (e.g. `/usr/local/bin` on Linux/macOS).
+
+### Option 4: Build from Source
+
+```bash
+# Clone repository
+git clone https://github.com/urzeye/lazyssh.git
+cd lazyssh
+
+# Build binary into ./bin/lazyssh
+make build
+
+# Or run directly
+make run
+```
 
 ---
 
-## 🔐 Security
+## ⚡ Quick Start & CLI Workflows
 
-lazyssh does not introduce extra security risk on its own.
-It is fundamentally a TUI layer on top of your existing SSH setup.
+```bash
+# 1. Open the interactive TUI (defaults to ~/.ssh/config)
+lazyssh
 
-- All SSH connections are executed through the system `ssh` binary, i.e. OpenSSH
-- lazyssh does not store, transmit, or modify your private keys, passwords, or other credentials
-- Existing `IdentityFile` paths and `ssh-agent` workflows continue to work as usual
-- lazyssh only reads and updates your SSH config files, and automatically creates backups before the first modification
-- It tries to preserve existing file permissions to avoid introducing new risk during config writes
+# 2. Launch directly with a fuzzy search filter
+lazyssh prod
+lazyssh --filter dev
 
-## 🧭 Managed Mode
+# 3. Headless direct connect (bypasses the TUI, preserves SSH exit codes)
+lazyssh -c production-server
 
-If your SSH setup looks like this:
+# 4. Connect and automatically exit the TUI when the session ends
+lazyssh --exit-after-session
 
-```sshconfig
-Include ~/.orbstack/ssh/config
-Include ~/.ssh/config.d/*.conf
-Include ~/.ssh/config.local
+# 5. Combine custom config file with headless connection
+lazyssh --sshconfig ~/.ssh/work_config -c bastion
+
+# 6. Safe read-only mode (prevents any config modifications)
+lazyssh --ssh-config-readonly
+# or via environment variable:
+export LAZYSSH_SSH_CONFIG_READONLY=1
+lazyssh
 ```
 
-you can run lazyssh in managed mode:
+---
+
+## 🧭 Deep Dive: Dotfiles & Managed Mode
+
+### The Problem
+Power users often maintain their primary SSH configurations inside Git-tracked dotfile repositories (e.g. `~/.ssh/config` is a symlink or contains shared company defaults). Using traditional SSH GUIs or TUIs can overwrite comments, break symlinks, or pollute version control with ad-hoc test hosts.
+
+### The Solution: Managed Mode
+With lazyssh's **Managed Mode**, you can read from your root config hierarchy while directing all writes to a dedicated local file:
+
+```sshconfig
+# ~/.ssh/config (Tracked in dotfiles git repo)
+Include ~/.orbstack/ssh/config
+Include ~/.ssh/config.d/*.conf
+Include ~/.ssh/config.local      # <-- lazyssh writes exclusively here!
+
+Host *
+    ServerAliveInterval 60
+    TCPKeepAlive yes
+```
+
+Run lazyssh with managed mode enabled:
 
 ```bash
 lazyssh \
@@ -123,178 +252,127 @@ lazyssh \
   --managed-sshconfig ~/.ssh/config.local
 ```
 
-In this mode:
-
-- `--sshconfig` points to the root config, and lazyssh recursively reads the full `Include` tree from it
-- `--managed-sshconfig` points to the actual writable file, such as `~/.ssh/config.local`
-- Entries coming from the root config, `config.d`, OrbStack, or any other included file are shown as read-only
-- Only hosts defined in the managed file can be added, edited, or deleted
-- Effective values inherited through `Host *`, `Host xxx-*`, and similar patterns are rendered correctly in the UI
-- SSH connections and forwarding still use the root config, so behavior stays aligned with the system `ssh` command
-
-## 🔒 Read-Only Mode
-
-If you want lazyssh to work strictly as a browser/launcher for your SSH config, run:
-
-```bash
-lazyssh --ssh-config-readonly
+```
+~/.ssh/config (Root Config / Dotfiles Repo)
+ ├── Include ~/.orbstack/ssh/config  [Read-Only: marked with [inc]]
+ ├── Include ~/.ssh/config.d/*.conf  [Read-Only: marked with [inc]]
+ └── Include ~/.ssh/config.local     [Writable Target: adds/edits land here]
 ```
 
-or set:
+#### What Managed Mode Guarantees:
+1. **Full Visibility**: All hosts across all included files are parsed and listed.
+2. **Safe Isolation**: Adding a host, editing, or deleting only modifies `~/.ssh/config.local`.
+3. **Accidental Edit Guard**: Attempting to edit or delete a host defined in an external or root file is blocked with a clear warning indicating its source file.
+4. **Cascading Inheritance**: Global settings from `Host *` in `~/.ssh/config` cascade seamlessly into the UI's effective value display.
+5. **OpenSSH Consistency**: Connections always use `--sshconfig ~/.ssh/config`, ensuring 100% fidelity with native `ssh` command behavior.
+
+---
+
+## 🛡️ Safe Writes & Automatic Backups
+
+lazyssh treats your SSH configuration with surgical precision:
+
+- **Atomic Saves**: Config changes are written to a temporary sibling file first and then atomically renamed (`os.Rename`), eliminating partial-write corruptions.
+- **Symlink Protection**: If your config file is a symlink, lazyssh resolves the target path and updates the destination file directly, preserving the symlink untouched.
+- **Baseline Backup**: Before the very first modification to a config file, a sibling `.original.backup` is created (e.g. `config.original.backup`).
+- **Rolling Backups**: Subsequent writes automatically generate timestamped backups (e.g. `config-20261118-190516-lazyssh.backup`). Up to **10 rolling backups** are retained automatically with older files pruned.
+- **Portable IdentityFile Normalization**: Keys located inside the user's home directory are normalized to `~/.ssh/...` relative syntax, avoiding machine-specific absolute path issues when syncing configs across devices.
+- **Minimal Diff Updates**: Only targeted host blocks are touched; your blank lines, indentation, comments, and untouched directives remain intact.
+
+---
+
+## ⌨️ Keyboard Shortcuts Reference
+
+### Navigation & Focus
+| Key | Action |
+|:---:|---|
+| <kbd>0</kbd> / <kbd>/</kbd> | Focus / Toggle collapsible search bar |
+| <kbd>1</kbd> | Focus server list |
+| <kbd>2</kbd> | Focus server details panel |
+| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>j</kbd> <kbd>k</kbd> | Navigate through server list |
+| <kbd>Enter</kbd> | Connect via SSH to the selected server |
+| <kbd>q</kbd> | Quit lazyssh |
+
+### Server Management
+| Key | Action |
+|:---:|---|
+| <kbd>a</kbd> | Add a new server |
+| <kbd>C</kbd> | Clone selected server into a prefilled Add form |
+| <kbd>v</kbd> | Import SSH command from clipboard into Add form |
+| <kbd>e</kbd> | Edit selected server (disabled for read-only / included hosts) |
+| <kbd>d</kbd> | Delete selected server with confirmation dialog |
+| <kbd>t</kbd> | Edit server tags (saved to metadata without rewriting config) |
+| <kbd>p</kbd> | Pin / unpin server to the top of the list |
+
+### Command Generation, SFTP & Tunnels
+| Key | Action |
+|:---:|---|
+| <kbd>c</kbd> | Copy SSH connection command to system clipboard |
+| <kbd>h</kbd> | Copy server host alias to system clipboard |
+| <kbd>P</kbd> | Open interactive SCP command generator (upload / download) |
+| <kbd>F</kbd> | Launch system `sftp` client for selected server |
+| <kbd>f</kbd> | Open interactive Port Forwarding wizard (Local, Remote, Dynamic) |
+| <kbd>x</kbd> | Stop active port forwarding tunnel for selected server |
+| <kbd>g</kbd> | Ping selected server to test reachability |
+| <kbd>r</kbd> | Refresh background data (servers and active sessions) |
+
+### View & Preferences
+| Key | Action |
+|:---:|---|
+| <kbd>s</kbd> | Switch sort field (Alias ↔ Last Connection Time) |
+| <kbd>S</kbd> | Reverse current sort direction (Ascending ↔ Descending) |
+| <kbd>T</kbd> | Toggle Color Theme (Dark ↔ Light) with persisted preference |
+
+### Inside Host Editor Forms
+| Key | Action |
+|:---:|---|
+| <kbd>Ctrl+H</kbd> / <kbd>Ctrl+←</kbd> | Switch to Previous tab |
+| <kbd>Ctrl+L</kbd> / <kbd>Ctrl+→</kbd> | Switch to Next tab |
+| <kbd>Ctrl+S</kbd> | Save host configuration |
+| <kbd>Esc</kbd> | Cancel / Return to main view |
+
+---
+
+## 🔐 Security Architecture
+
+lazyssh is designed with strict security boundaries:
+
+- **Zero Credential Storage**: lazyssh never stores, inspects, or transmits private keys, passphrases, or passwords.
+- **OpenSSH Passthrough**: All SSH connections, port tunnels, and SFTP sessions are executed by delegating directly to the system OpenSSH binary (`ssh`, `sftp`). Existing `ssh-agent` keys and hardware tokens (YubiKey/FIDO2) work out-of-the-box.
+- **Permission Safety**: Writes respect original file permissions (`0600` / `0644`) to guarantee OpenSSH permission checks never fail.
+- **Syntax Validation**: Pasted SSH commands and imported flags are sanitized and validated against OpenSSH specifications before being accepted into forms.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and suggestions are warmly welcome!
 
 ```bash
-LAZYSSH_SSH_CONFIG_READONLY=1 lazyssh
-```
-
-In read-only mode, lazyssh still reads the full `Include` tree and allows search, details, copy, ping, SSH connection, forwarding, pinning, and last-seen metadata. It disables SSH config mutations such as adding, editing, deleting, or editing tags.
-
-## 🛡️ Safe Writes and Automatic Backups
-
-- Non-destructive edits: lazyssh writes only the smallest required change set and tries to preserve comments, blank lines, ordering, and untouched fields
-- Atomic writes: updates are written to a temporary file first and then atomically replaced to reduce the risk of partial writes
-- Symlink-safe behavior: if the managed config file itself is a symlink, lazyssh updates the target file instead of overwriting the symlink
-- First-write backup: before the first modification of a managed SSH config file, lazyssh creates a sibling backup such as `config.original.backup` or `config.local.original.backup`
-- Rolling backups: every later save also creates a timestamped backup such as `~/.ssh/config.local-<timestamp>-lazyssh.backup`
-- Backup rotation: up to 10 rolling backups are kept automatically, and older ones are cleaned up
-- Portable paths: `IdentityFile` entries inside the current user's home directory are normalized to `~/.ssh/...` when written back, which is friendlier for cross-machine dotfile sync
-
-## 📷 Screenshots
-
-<div align="center">
-
-### 🚀 Startup Screen
-<img src="./docs/loader.png" alt="Startup screen" width="800" />
-
-The loading screen shown when the application starts.
-
----
-
-### 📋 Host Management Panel
-<img src="./docs/list server.png" alt="Host list view" width="900" />
-
-The main view shows configured hosts, status information, pinned entries, and quick navigation actions.
-
----
-
-### 🔎 Search
-<img src="./docs/search.png" alt="Fuzzy host search" width="900" />
-
-Search quickly by hostname, IP address, user, or tag.
-
----
-
-### ➕ Add / Edit Hosts
-<img src="./docs/add server.png" alt="Add host screen" width="900" />
-
-The tabbed editor is organized around common SSH workflows:
-
-- **Basics**: host, user, port, key, and tags
-- **Connection**: proxies, timeout, multiplexing, and canonicalization
-- **Forwarding**: port forwarding, X11, and agent forwarding
-- **Authentication**: keys, passwords, auth methods, and algorithm options
-- **Advanced**: security, encryption, environment variables, and debug options
-
----
-
-### 🔐 Connect to Hosts
-<img src="./docs/ssh.png" alt="SSH connection view" width="900" />
-
-Start an SSH session directly from the interface.
-
-</div>
-
----
-
-## 📦 Installation
-
-### Option 1: Install with mise (Recommended)
-
-If you already use `mise`, you can install lazyssh directly from this repository's GitHub Releases:
-
-```bash
-mise use -g github:urzeye/lazyssh@latest
-lazyssh
-```
-
-If you want to pin a specific release, specify the version explicitly:
-
-```bash
-mise use -g github:urzeye/lazyssh@v2026.6.4
-```
-
-Notes:
-
-- This uses the `github:` backend in `mise`, which downloads the matching release asset from `urzeye/lazyssh`
-- Release tags and release names use `vYYYY.M.D`, so upstream PRs and issues before that release date can be skipped during the next sync pass
-- `mise` writes the selected version into your global config, so `lazyssh` becomes available in all terminals afterward
-
-### Option 2: Build from Source
-
-```bash
+# 1. Fork and clone the repository
 git clone https://github.com/urzeye/lazyssh.git
 cd lazyssh
 
-# Build
-make build
-./bin/lazyssh
+# 2. Run quality checks and tests
+make test
+make lint
 
-# Or run directly
-make run
+# 3. Create a feature branch and submit a PR
+git checkout -b feat/my-new-feature
 ```
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## 📄 License & Attribution
 
-| Key | Action |
-| ---- | ---- |
-| `/` | Expand or collapse the search bar |
-| `↑↓` / `j` `k` | Move through the host list |
-| `Enter` | SSH into the selected host |
-| `c` | Copy the SSH command to the clipboard |
-| `h` | Copy the host alias to the clipboard |
-| `g` | Ping the current host |
-| `r` | Refresh background data |
-| `a` | Add a host |
-| `C` | Clone the selected host into an Add form |
-| `v` | Paste an SSH command into an Add form |
-| `P` | Generate and copy an SCP upload/download command |
-| `F` | Open system SFTP for the selected host |
-| `e` | Edit a host |
-| `t` | Edit tags |
-| `d` | Delete a host |
-| `p` | Pin or unpin a host |
-| `s` | Switch the sort field |
-| `S` | Reverse the sort order |
-| `T` | Toggle dark/light theme |
-| `0` / `1` / `2` | Focus the search bar / host list / details panel |
-| `q` | Quit |
+This project is licensed under the [Apache License 2.0](LICENSE).
 
-**Inside host forms:**
+### Acknowledgments & Upstream Credits
+- **[Adembc](https://github.com/Adembc)** — Creator of the original [`lazyssh`](https://github.com/Adembc/lazyssh). We express our deepest gratitude for his vision and foundational codebase.
+- **[WhiteRoseLK/neossh](https://github.com/WhiteRoseLK/neossh)** — For inspiring modern README aesthetics and demonstrating community dedication to SSH terminal tools.
+- **[rivo/tview](https://github.com/rivo/tview)** & **[gdamore/tcell](https://github.com/gdamore/tcell)** — For providing the rich terminal UI toolkit.
+- **[derailed/k9s](https://github.com/derailed/k9s)** & **[jesseduffield/lazydocker](https://github.com/jesseduffield/lazydocker)** — For inspiring the terminal user experience.
 
-| Key | Action |
-| ---- | ---- |
-| `Ctrl+H` | Switch to the previous tab |
-| `Ctrl+L` | Switch to the next tab |
-| `Ctrl+S` | Save |
-| `Esc` | Cancel |
-
-Tip: the hint area at the top of the list shows the most common shortcuts so they are easy to rediscover.
-
----
-
-## ⭐ Original Author Support
-
-This repository is independently maintained. The links below are the original author's support links from the upstream [`Adembc/lazyssh`](https://github.com/Adembc/lazyssh) project, not the funding links for this fork.
-
-If you find LazySSH useful and want to support the original author, please consider giving the upstream repository a **star** and joining its [stargazers](https://github.com/Adembc/lazyssh/stargazers).
-
-You can also support the original author, Adembc, by [buying them a coffee](https://www.buymeacoffee.com/adembc).
-
----
-
-## 🙏 Credits
-
-- Special thanks to the original [`lazyssh`](https://github.com/Adembc/lazyssh) project and its author/maintainers for creating the foundation this fork builds on
-- Built with [tview](https://github.com/rivo/tview) and [tcell](https://github.com/gdamore/tcell)
-- Design inspiration from [k9s](https://github.com/derailed/k9s) and [lazydocker](https://github.com/jesseduffield/lazydocker)
+<div align="center">
+  <sub>Maintained with ❤️ by <a href="https://github.com/urzeye">urzeye</a> and community contributors.</sub>
+</div>
