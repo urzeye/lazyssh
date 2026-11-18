@@ -81,9 +81,13 @@ lazyssh --sshconfig ~/.ssh/work --connect production
 
 导入时，Windows 保留反斜杠路径，其他平台沿用 POSIX 转义规则。未加引号且位于词首的 `#` 开始注释，引号里的 `#` 保持字面值。目标地址中的用户和端口遵循 OpenSSH 参数优先级。命令行尾部远端命令中的字面百分号会在写入 `RemoteCommand` 时转义；显式 `-o RemoteCommand` 的模板展开能力保持不变。
 
+复制 SSH 命令时，`RemoteCommand` 保持为 `-o` 选项，执行或再次导入时保留百分号展开语义。保存 `SessionType`（包括导入的 `-N`/`-s`）需要客户端支持该选项，通常要求 OpenSSH 8.7+。隔离的离线检查会在修改配置和元数据之前拒绝不支持的设置。
+
 `P` 提供上传/下载方向、路径和递归选项，预览并复制 SCP 命令，不直接发起传输。生成的命令保留所选 alias 和当前 root config，Windows 使用 PowerShell 引号规则，其他平台使用 POSIX shell 引号规则。`F` 调用已安装的系统 `sftp`，使用同一 alias/config，会话结束后返回列表。两项能力在只读模式下仍可用。
 
 打开 SCP 辅助界面时会探测一次已安装客户端的能力：支持 `-s` 时明确使用 SFTP，旧客户端则单独处理远端 shell 引号，让路径中的空格和元字符保持字面值。远端 `~` 路径在服务器上展开。客户端缺失或能力输出无法识别时会报错，不猜测协议。
+
+旧协议的远端路径使用兼容 SCP 接收端文件名校验的反斜杠转义，校验保持开启。Windows 命令通过明确的参数启动原生进程，兼容 PowerShell 5.1 和 7，不修改调用者的原生参数传递偏好。
 
 仅修改标签时只更新 metadata，不重写 SSH 配置。managed 模式只调整受管文件里的插入顺序，root/global 中更早出现的规则仍遵循 OpenSSH 优先级；需要覆盖默认项时，请把 managed `Include` 放在这些默认规则之前。
 

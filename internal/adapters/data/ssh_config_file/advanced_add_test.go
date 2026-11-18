@@ -33,6 +33,7 @@ func TestAddServerRetainsAdvancedOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := NewRepository(zap.NewNop().Sugar(), path, filepath.Join(dir, "meta.json"))
+	repo.(*Repository).sshCommand = capabilityCommand(t, true)
 	server := domain.Server{Alias: "clone", Host: "192.0.2.1", Port: 2222, SessionType: "none", AddressFamily: "inet", BindAddress: "127.0.0.1", ExitOnForwardFailure: "yes", IPQoS: "lowdelay", CanonicalizeHostname: "no", CanonicalDomains: "example.com", GatewayPorts: "yes", CheckHostIP: "yes", FingerprintHash: "sha256"}
 	if err := repo.AddServer(server); err != nil {
 		t.Fatal(err)

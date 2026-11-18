@@ -17,6 +17,7 @@ package ui
 import (
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -50,10 +51,21 @@ func TestSCPCommandPreservesAliasAndConfig(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(command, "scp -s -F "+shellQuote("/config dir/custom ssh")) || !strings.Contains(command, " -r -- ") || !strings.Contains(command, shellQuote("prod:/remote dir/file")) {
+		configArg := "/config dir/custom ssh"
+		localArg, remoteArg := "/local dir/file's name", "prod:/remote dir/file"
+		flags, recursiveFlags := "scp -s -F ", " -r -- "
+		if runtime.GOOS == windowsOS {
+			configArg = strings.ReplaceAll(quoteWindowsArgument(configArg), "'", "''")
+			localArg = strings.ReplaceAll(quoteWindowsArgument(localArg), "'", "''")
+			remoteArg = quoteWindowsArgument(remoteArg)
+			flags, recursiveFlags = `"-s" "-F" `, ` "-r" "--" `
+		} else {
+			configArg, localArg, remoteArg = shellQuote(configArg), shellQuote(localArg), shellQuote(remoteArg)
+		}
+		if !strings.Contains(command, flags+configArg) || !strings.Contains(command, recursiveFlags) || !strings.Contains(command, remoteArg) {
 			t.Fatalf("bad command: %s", command)
 		}
-		localPos, remotePos := strings.Index(command, shellQuote("/local dir/file's name")), strings.Index(command, shellQuote("prod:/remote dir/file"))
+		localPos, remotePos := strings.Index(command, localArg), strings.Index(command, remoteArg)
 		if (localPos < remotePos) != upload {
 			t.Fatalf("wrong direction: %s", command)
 		}
@@ -112,7 +124,13 @@ func TestSCPExpandsLocalHomeWithoutExpandingRemoteHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(command, shellQuote(filepath.Join(home, "file"))) || !strings.Contains(command, shellQuote("prod:~/remote")) {
+	localArg, remoteArg := filepath.Join(home, "file"), "prod:~/remote"
+	if runtime.GOOS == windowsOS {
+		localArg, remoteArg = quoteWindowsArgument(filepath.ToSlash(localArg)), quoteWindowsArgument(remoteArg)
+	} else {
+		localArg, remoteArg = shellQuote(localArg), shellQuote(remoteArg)
+	}
+	if !strings.Contains(command, localArg) || !strings.Contains(command, remoteArg) {
 		t.Fatalf("wrong home expansion: %s", command)
 	}
 }

@@ -70,14 +70,19 @@ func scpProtocolFromUsage(usage string) (SCPProtocol, error) {
 }
 
 func quoteLegacyRemotePath(value string) string {
-	// Tilde expansion belongs to the remote shell; all path characters after it
-	// remain literal, including spaces, apostrophes and shell metacharacters.
+	// Both the remote shell and SCP's local fnmatch check consume backslash
+	// escapes. Shell quotes survive in the local check and reject valid files.
 	prefix := remoteHomePrefix.FindString(value)
 	value = strings.TrimPrefix(value, prefix)
-	if value == "" && prefix != "" {
-		return prefix
+	var escaped strings.Builder
+	escaped.WriteString(prefix)
+	for _, ch := range value {
+		if strings.ContainsRune(" \t\\\"'`$&;|<>(){}[]*?!#~", ch) {
+			escaped.WriteByte('\\')
+		}
+		escaped.WriteRune(ch)
 	}
-	return prefix + "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	return escaped.String()
 }
 
 func shellQuote(value string) string {
@@ -111,27 +116,32 @@ func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, re
 	if runtime.GOOS != windowsOS && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {
 		localPath = "./" + localPath
 	}
-	parts := []string{"scp"}
+	if runtime.GOOS == windowsOS {
+		// Both native OpenSSH and MSYS accept drive paths with forward slashes.
+		// This also avoids MSYS's special backslash rules for DOS paths.
+		configPath, localPath = filepath.ToSlash(configPath), filepath.ToSlash(localPath)
+	}
+	var args []string
 	switch protocol {
 	case SCPOverSFTP:
-		parts = append(parts, "-s")
+		args = append(args, "-s")
 	case SCPLegacy:
 		remotePath = quoteLegacyRemotePath(remotePath)
 	default:
 		return "", fmt.Errorf("unsupported SCP protocol")
 	}
-	parts = append(parts, "-F", shellQuote(configPath))
+	args = append(args, "-F", configPath)
 	if recursive {
-		parts = append(parts, "-r")
+		args = append(args, "-r")
 	}
-	parts = append(parts, "--")
-	local, remote := shellQuote(localPath), shellQuote(alias+":"+remotePath)
+	args = append(args, "--")
+	local, remote := localPath, alias+":"+remotePath
 	if upload {
-		parts = append(parts, local, remote)
+		args = append(args, local, remote)
 	} else {
-		parts = append(parts, remote, local)
+		args = append(args, remote, local)
 	}
-	return strings.Join(parts, " "), nil
+	return formatNativeCommand("scp", args), nil
 }
 
 func (t *tui) handleSCP() {

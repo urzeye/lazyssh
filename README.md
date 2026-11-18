@@ -81,9 +81,13 @@ lazyssh --sshconfig ~/.ssh/work --connect production
 
 Import preserves Windows backslash paths on Windows and POSIX escapes elsewhere. Unquoted word-initial `#` starts a comment; quoted hashes remain literal. Destination users/ports retain OpenSSH argument precedence. Literal percent signs in a positional remote command are escaped for storage as `RemoteCommand`; explicit `-o RemoteCommand` templates retain their token expansion.
 
+Copied SSH commands keep `RemoteCommand` as a `-o` option, preserving percent expansion when executed or imported again. Saving `SessionType` (including imported `-N`/`-s`) requires a client that supports it, normally OpenSSH 8.7+. An isolated offline probe rejects unsupported settings before changing config or metadata.
+
 `P` opens an upload/download SCP command helper with a preview and clipboard copy; it does not start a transfer. Commands preserve the selected alias and current `-F` root config. On Windows they use PowerShell quoting; elsewhere they use POSIX shell quoting. `F` starts the installed system `sftp` client with the same alias/config and returns to the picker when it ends. Both remain available in read-only mode.
 
 The SCP helper inspects the installed client once when opened. Clients advertising `-s` use explicit SFTP mode; older clients use separate remote-shell quoting so path spaces and metacharacters stay literal. Remote `~` paths expand on the server. Missing clients or unrecognized capability output produce an error instead of guessing a protocol.
+
+Legacy remote paths use backslash escapes compatible with SCP's receive-side filename check; that check remains enabled. Windows commands launch the native process with explicit arguments, supporting PowerShell 5.1 and 7 without changing the caller's argument-passing preference.
 
 Tag-only edits update metadata without rewriting SSH config. Managed-mode insertion changes only the managed file: earlier root/global rules retain their OpenSSH precedence, so place the managed `Include` before defaults intended to be overridable.
 

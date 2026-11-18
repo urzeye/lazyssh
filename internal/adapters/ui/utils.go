@@ -187,6 +187,11 @@ func BuildSSHCommand(s domain.Server) string {
 
 	// Add command execution options
 	addCommandExecutionOptions(&parts, s)
+	if s.RemoteCommand != "" {
+		// Keep this a config template: moving it to a positional command
+		// bypasses OpenSSH's percent expansion and doubles escapes on reimport.
+		parts = append(parts, "-o", shellQuote("RemoteCommand="+s.RemoteCommand))
+	}
 
 	// Add environment options
 	addEnvironmentOptions(&parts, s)
@@ -217,16 +222,6 @@ func BuildSSHCommand(s domain.Server) string {
 		userHost = s.Alias
 	}
 	parts = append(parts, userHost)
-
-	// RemoteCommand (must come after the host)
-	if s.RemoteCommand != "" {
-		// Handle special case: RemoteCommand=none clears the command (OpenSSH 7.6+)
-		if s.RemoteCommand == sessionTypeNone {
-			parts = append(parts, "-o", "RemoteCommand=none")
-		} else {
-			parts = append(parts, quoteIfNeeded(s.RemoteCommand))
-		}
-	}
 
 	return strings.Join(parts, " ")
 }

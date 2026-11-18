@@ -15,7 +15,9 @@
 package ssh_config_file
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/urzeye/lazyssh/internal/core/domain"
@@ -31,6 +33,7 @@ type Repository struct {
 	fileSystem      FileSystem
 	metadataManager *metadataManager
 	logger          *zap.SugaredLogger
+	sshCommand      func(context.Context, ...string) *exec.Cmd
 }
 
 // NewRepository creates a new SSH config repository.
@@ -73,6 +76,10 @@ func newRepositoryWithFS(
 		readOnly:        readOnly,
 		fileSystem:      fs,
 		metadataManager: newMetadataManager(metaDataPath, logger),
+		sshCommand: func(ctx context.Context, args ...string) *exec.Cmd {
+			// #nosec G204 -- fixed executable, direct arguments, offline config probe.
+			return exec.CommandContext(ctx, "ssh", args...)
+		},
 	}
 }
 
@@ -104,6 +111,9 @@ func (r *Repository) AddServer(server domain.Server) error {
 	if err := r.ensureWritable("add servers"); err != nil {
 		return err
 	}
+	if err := r.validateSessionType(server.SessionType); err != nil {
+		return err
+	}
 
 	if existing, found, err := r.findLoadedServerByAlias(server.Alias, nil); err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -129,6 +139,9 @@ func (r *Repository) AddServer(server domain.Server) error {
 // UpdateServer updates an existing server in the SSH config.
 func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server) error {
 	if err := r.ensureWritable("edit servers"); err != nil {
+		return err
+	}
+	if err := r.validateSessionType(newServer.SessionType); err != nil {
 		return err
 	}
 

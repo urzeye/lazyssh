@@ -272,6 +272,14 @@ func TestImportedRemoteCommandSurvivesFormAndConfig(t *testing.T) {
 	if err != nil || len(servers) != 1 || servers[0].RemoteCommand != "date +%%Y" {
 		t.Fatalf("percent escape lost: %+v %v", servers, err)
 	}
+	for i := 0; i < 3; i++ {
+		copied := BuildSSHCommand(servers[0])
+		reimported, err := ParseSSHCommand(copied)
+		if err != nil || reimported.RemoteCommand != servers[0].RemoteCommand {
+			t.Fatalf("copy/reimport changed RemoteCommand: %q -> %q, %v", copied, reimported.RemoteCommand, err)
+		}
+		servers[0] = reimported
+	}
 }
 
 func TestParseSSHCommandRejectsAmbiguity(t *testing.T) {
