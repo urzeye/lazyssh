@@ -19,14 +19,37 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSSHSessionHelper(t *testing.T) {
 	mode := os.Getenv("LAZYSSH_TEST_SESSION_HELPER")
 	if mode == "" {
 		return
+	}
+	if mode == "wait" {
+		time.Sleep(3 * time.Second)
+		os.Exit(0)
+	}
+	if mode == "hold-stderr" {
+		child := exec.Command(os.Args[0], "-test.run=^TestSSHSessionHelper$")
+		child.Env = append(os.Environ(), "LAZYSSH_TEST_SESSION_HELPER=wait")
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		pidPath := os.Getenv("LAZYSSH_TEST_PID_FILE")
+		if err := os.WriteFile(pidPath, []byte(strconv.Itoa(child.Process.Pid)), 0o600); err != nil {
+			_ = child.Process.Kill()
+			os.Exit(1)
+		}
+		_ = child.Process.Release()
+		os.Exit(0)
 	}
 	if mode == "resolve" {
 		fmt.Println("hostname 127.0.0.1")
@@ -66,5 +89,34 @@ func TestSSHDiagnosticsAreBounded(t *testing.T) {
 	_, _ = tail.Write([]byte("final error"))
 	if len(tail.data) != maxSSHDiagnostics || !strings.HasSuffix(string(tail.data), "final error") {
 		t.Fatal("diagnostics not bounded or lost the final error")
+	}
+}
+
+func TestSSHSessionDoesNotWaitForProxyStderrForever(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSSHSessionHelper$")
+	pidPath := filepath.Join(t.TempDir(), "proxy.pid")
+	cmd.Env = append(os.Environ(), "LAZYSSH_TEST_SESSION_HELPER=hold-stderr", "LAZYSSH_TEST_PID_FILE="+pidPath)
+	cmd.WaitDelay = 100 * time.Millisecond
+	start := time.Now()
+	err := runInteractiveSSH(cmd)
+	pidData, readErr := os.ReadFile(pidPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	pid, parseErr := strconv.Atoi(string(pidData))
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	proxy, findErr := os.FindProcess(pid)
+	if findErr != nil {
+		t.Fatal(findErr)
+	}
+	_ = proxy.Kill()
+	_, _ = proxy.Wait()
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatalf("expected bounded pipe wait, got %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("SSH remained blocked by a proxy stderr handle")
 	}
 }

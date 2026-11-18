@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 const maxSSHDiagnostics = 16 * 1024
@@ -42,6 +43,11 @@ func (b *diagnosticTail) Write(p []byte) (int, error) {
 
 func runInteractiveSSH(cmd *exec.Cmd) error {
 	var diagnostics diagnosticTail
+	// Proxy children can inherit stderr and outlive ssh. Do not wait forever
+	// for their pipe handles after the SSH process has already exited.
+	if cmd.WaitDelay == 0 {
+		cmd.WaitDelay = 2 * time.Second
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = io.MultiWriter(os.Stderr, &diagnostics)
