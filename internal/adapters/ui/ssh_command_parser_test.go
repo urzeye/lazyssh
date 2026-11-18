@@ -15,8 +15,14 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/urzeye/lazyssh/internal/adapters/data/ssh_config_file"
+	"github.com/urzeye/lazyssh/internal/core/domain"
+	"go.uber.org/zap"
 )
 
 func TestParseSSHCommand(t *testing.T) {
@@ -35,6 +41,52 @@ func TestParseSSHCommand(t *testing.T) {
 	server, err = ParseSSHCommand("ssh \\\n-p 2222 example")
 	if err != nil || server.Port != 2222 {
 		t.Fatalf("continuation: %+v %v", server, err)
+	}
+}
+
+func TestImportedRemoteCommandPercentSemantics(t *testing.T) {
+	for _, tc := range []struct{ command, want string }{
+		{`ssh host 'date +%Y'`, "date +%%Y"},
+		{`ssh -- host 'echo %h 100%'`, "echo %%h 100%%"},
+		{`ssh -o 'RemoteCommand=echo %h' host`, "echo %h"},
+		{`ssh -o 'RemoteCommand=echo %h' -- host`, "echo %h"},
+		{`ssh -o RemoteCommand=none host 'date +%Y'`, "date +%%Y"},
+	} {
+		server, err := ParseSSHCommand(tc.command)
+		if err != nil || server.RemoteCommand != tc.want {
+			t.Errorf("%s: got %q, %v, want %q", tc.command, server.RemoteCommand, err, tc.want)
+		}
+	}
+	if _, err := ParseSSHCommand(`ssh -o RemoteCommand=first host second`); err == nil {
+		t.Fatal("conflicting remote commands accepted")
+	}
+}
+
+func TestImportedRemoteCommandSurvivesFormAndConfig(t *testing.T) {
+	server, err := ParseSSHCommand(`ssh host 'date +%Y'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config")
+	if err := os.WriteFile(config, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := ssh_config_file.NewRepository(zap.NewNop().Sugar(), config, filepath.Join(dir, "metadata.json"))
+	form := NewServerForm(ServerFormAdd, &server).SetVersionInfo("test", "test")
+	var saveErr error
+	form.OnSave(func(saved domain.Server, original *domain.Server) {
+		if original != nil {
+			t.Fatal("import treated as update")
+		}
+		saveErr = repo.AddServer(saved)
+	})
+	if !form.handleSave() || saveErr != nil {
+		t.Fatalf("save imported command: %v", saveErr)
+	}
+	servers, err := repo.ListServers("")
+	if err != nil || len(servers) != 1 || servers[0].RemoteCommand != "date +%%Y" {
+		t.Fatalf("percent escape lost: %+v %v", servers, err)
 	}
 }
 

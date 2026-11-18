@@ -43,7 +43,9 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 				return domain.Server{}, fmt.Errorf("missing or ambiguous SSH destination")
 			}
 			target = args[i+1]
-			server.RemoteCommand = strings.Join(args[i+2:], " ")
+			if err := setPositionalRemoteCommand(&server, args[i+2:]); err != nil {
+				return domain.Server{}, err
+			}
 			break
 		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
@@ -51,7 +53,9 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 				target = arg
 				continue
 			}
-			server.RemoteCommand = strings.Join(args[i:], " ")
+			if err := setPositionalRemoteCommand(&server, args[i:]); err != nil {
+				return domain.Server{}, err
+			}
 			break
 		}
 		for j := 1; j < len(arg); j++ {
@@ -94,6 +98,19 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 		server.Port = 22
 	}
 	return server, nil
+}
+
+func setPositionalRemoteCommand(server *domain.Server, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	if server.RemoteCommand != "" && server.RemoteCommand != sessionTypeNone {
+		return fmt.Errorf("cannot combine a command-line command with -o RemoteCommand")
+	}
+	// Command-line commands bypass OpenSSH's config token expansion. Escaping
+	// here retains their literal percent signs after saving as RemoteCommand.
+	server.RemoteCommand = strings.ReplaceAll(strings.Join(args, " "), "%", "%%")
+	return nil
 }
 
 func applySSHDestination(server *domain.Server, target string) error {
