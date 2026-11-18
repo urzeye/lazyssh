@@ -122,78 +122,7 @@ func (r *Repository) createHostFromServer(server domain.Server) *ssh_config.Host
 		r.addKVNodeIfNotEmpty(host, "IdentityFile", normalizeIdentityFilePath(identityFile))
 	}
 
-	// Connection and proxy settings
-	r.addKVNodeIfNotEmpty(host, "ProxyJump", server.ProxyJump)
-	r.addKVNodeIfNotEmpty(host, "ProxyCommand", server.ProxyCommand)
-	r.addKVNodeIfNotEmpty(host, "RemoteCommand", server.RemoteCommand)
-	r.addKVNodeIfNotEmpty(host, "RequestTTY", server.RequestTTY)
-	r.addKVNodeIfNotEmpty(host, "ConnectTimeout", server.ConnectTimeout)
-	r.addKVNodeIfNotEmpty(host, "ConnectionAttempts", server.ConnectionAttempts)
-
-	// Port forwarding
-	for _, forward := range server.LocalForward {
-		configFormat := r.convertCLIForwardToConfigFormat(forward)
-		r.addKVNodeIfNotEmpty(host, "LocalForward", configFormat)
-	}
-	for _, forward := range server.RemoteForward {
-		configFormat := r.convertCLIForwardToConfigFormat(forward)
-		r.addKVNodeIfNotEmpty(host, "RemoteForward", configFormat)
-	}
-	for _, forward := range server.DynamicForward {
-		r.addKVNodeIfNotEmpty(host, "DynamicForward", forward)
-	}
-
-	// Authentication and key management
-	r.addKVNodeIfNotEmpty(host, "PubkeyAuthentication", server.PubkeyAuthentication)
-	r.addKVNodeIfNotEmpty(host, "PubkeyAcceptedAlgorithms", server.PubkeyAcceptedAlgorithms)
-	r.addKVNodeIfNotEmpty(host, "HostbasedAcceptedAlgorithms", server.HostbasedAcceptedAlgorithms)
-	r.addKVNodeIfNotEmpty(host, "PasswordAuthentication", server.PasswordAuthentication)
-	r.addKVNodeIfNotEmpty(host, "PreferredAuthentications", server.PreferredAuthentications)
-	r.addKVNodeIfNotEmpty(host, "IdentitiesOnly", server.IdentitiesOnly)
-	r.addKVNodeIfNotEmpty(host, "AddKeysToAgent", server.AddKeysToAgent)
-	r.addKVNodeIfNotEmpty(host, "IdentityAgent", server.IdentityAgent)
-
-	// Agent and X11 forwarding
-	r.addKVNodeIfNotEmpty(host, "ForwardAgent", server.ForwardAgent)
-	r.addKVNodeIfNotEmpty(host, "ForwardX11", server.ForwardX11)
-	r.addKVNodeIfNotEmpty(host, "ForwardX11Trusted", server.ForwardX11Trusted)
-
-	// Connection multiplexing
-	r.addKVNodeIfNotEmpty(host, "ControlMaster", server.ControlMaster)
-	r.addKVNodeIfNotEmpty(host, "ControlPath", server.ControlPath)
-	r.addKVNodeIfNotEmpty(host, "ControlPersist", server.ControlPersist)
-
-	// Connection reliability
-	r.addKVNodeIfNotEmpty(host, "ServerAliveInterval", server.ServerAliveInterval)
-	r.addKVNodeIfNotEmpty(host, "ServerAliveCountMax", server.ServerAliveCountMax)
-	r.addKVNodeIfNotEmpty(host, "Compression", server.Compression)
-	r.addKVNodeIfNotEmpty(host, "TCPKeepAlive", server.TCPKeepAlive)
-	r.addKVNodeIfNotEmpty(host, "BatchMode", server.BatchMode)
-
-	// Security
-	r.addKVNodeIfNotEmpty(host, "StrictHostKeyChecking", server.StrictHostKeyChecking)
-	r.addKVNodeIfNotEmpty(host, "UserKnownHostsFile", server.UserKnownHostsFile)
-	r.addKVNodeIfNotEmpty(host, "HostKeyAlgorithms", server.HostKeyAlgorithms)
-	r.addKVNodeIfNotEmpty(host, "VerifyHostKeyDNS", server.VerifyHostKeyDNS)
-	r.addKVNodeIfNotEmpty(host, "UpdateHostKeys", server.UpdateHostKeys)
-	r.addKVNodeIfNotEmpty(host, "HashKnownHosts", server.HashKnownHosts)
-	r.addKVNodeIfNotEmpty(host, "VisualHostKey", server.VisualHostKey)
-
-	// Command execution
-	r.addKVNodeIfNotEmpty(host, "LocalCommand", server.LocalCommand)
-	r.addKVNodeIfNotEmpty(host, "PermitLocalCommand", server.PermitLocalCommand)
-	r.addKVNodeIfNotEmpty(host, "EscapeChar", server.EscapeChar)
-
-	// Environment settings
-	for _, env := range server.SendEnv {
-		r.addKVNodeIfNotEmpty(host, "SendEnv", env)
-	}
-	for _, env := range server.SetEnv {
-		r.addKVNodeIfNotEmpty(host, "SetEnv", env)
-	}
-
-	// Debugging
-	r.addKVNodeIfNotEmpty(host, "LogLevel", server.LogLevel)
+	r.updateHostNodes(host, server)
 
 	return host
 }

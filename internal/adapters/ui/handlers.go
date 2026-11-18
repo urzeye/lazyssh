@@ -62,6 +62,9 @@ func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	case 'a':
 		t.handleServerAdd()
 		return nil
+	case 'C':
+		t.handleServerClone()
+		return nil
 	case 'e':
 		t.handleServerEdit()
 		return nil
@@ -316,17 +319,39 @@ func (t *tui) handleServerSelectionChange(server domain.Server) {
 }
 
 func (t *tui) handleServerAdd() {
+	t.showAddServerForm(nil)
+}
+
+func (t *tui) showAddServerForm(prefill *domain.Server) {
 	if t.serverService.IsReadOnly() {
 		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", CurrentTheme.Warning)
 		return
 	}
 
-	form := NewServerForm(ServerFormAdd, nil).
+	form := NewServerForm(ServerFormAdd, prefill).
 		SetApp(t.app).
 		SetVersionInfo(t.version, t.commit).
 		OnSave(t.handleServerSave).
 		OnCancel(t.handleFormCancel)
 	t.app.SetRoot(form, true)
+}
+
+func (t *tui) handleServerClone() {
+	if t.serverService.IsReadOnly() {
+		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", CurrentTheme.Warning)
+		return
+	}
+	server, ok := t.serverList.GetSelectedServer()
+	if !ok {
+		return
+	}
+	servers, err := t.serverService.ListServers("")
+	if err != nil {
+		t.showStatusTempColor("Could not load hosts: "+err.Error(), CurrentTheme.Error)
+		return
+	}
+	clone := cloneServer(server, servers)
+	t.showAddServerForm(&clone)
 }
 
 func (t *tui) handleServerEdit() {

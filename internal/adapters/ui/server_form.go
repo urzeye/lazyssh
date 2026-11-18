@@ -1098,7 +1098,7 @@ func (sf *ServerForm) validateAllFields() bool {
 
 // getDefaultValues returns default form values based on mode
 func (sf *ServerForm) getDefaultValues() ServerFormData {
-	if sf.mode == ServerFormEdit && sf.original != nil {
+	if sf.original != nil {
 		return ServerFormData{
 			Alias:                sf.original.Alias,
 			Host:                 sf.original.Host,
@@ -1153,6 +1153,8 @@ func (sf *ServerForm) getDefaultValues() ServerFormData {
 			TCPKeepAlive:                sf.original.TCPKeepAlive,
 			BatchMode:                   sf.original.BatchMode,
 			StrictHostKeyChecking:       sf.original.StrictHostKeyChecking,
+			CheckHostIP:                 sf.original.CheckHostIP,
+			FingerprintHash:             sf.original.FingerprintHash,
 			UserKnownHostsFile:          sf.original.UserKnownHostsFile,
 			HostKeyAlgorithms:           sf.original.HostKeyAlgorithms,
 			PubkeyAcceptedAlgorithms:    sf.original.PubkeyAcceptedAlgorithms,
@@ -1970,7 +1972,11 @@ func (sf *ServerForm) handleSave() bool {
 
 	server := sf.dataToServer(data)
 	if sf.onSave != nil {
-		sf.onSave(server, sf.original)
+		original := sf.original
+		if sf.mode == ServerFormAdd {
+			original = nil // A prefilled Add form always creates a new entry.
+		}
+		sf.onSave(server, original)
 	}
 	return true // Save successful
 }
@@ -2216,27 +2222,34 @@ func (sf *ServerForm) dataToServer(data ServerFormData) domain.Server {
 	}
 
 	server := domain.Server{
-		Alias:                data.Alias,
-		Host:                 data.Host,
-		User:                 data.User,
-		Port:                 port,
-		IdentityFiles:        keys,
-		Tags:                 tags,
-		ProxyJump:            data.ProxyJump,
-		ProxyCommand:         data.ProxyCommand,
-		RemoteCommand:        data.RemoteCommand,
-		RequestTTY:           data.RequestTTY,
-		SessionType:          data.SessionType,
-		ConnectTimeout:       data.ConnectTimeout,
-		ConnectionAttempts:   data.ConnectionAttempts,
-		BindAddress:          data.BindAddress,
-		BindInterface:        data.BindInterface,
-		AddressFamily:        data.AddressFamily,
-		ExitOnForwardFailure: data.ExitOnForwardFailure,
-		LocalForward:         splitComma(data.LocalForward),
-		RemoteForward:        splitComma(data.RemoteForward),
-		DynamicForward:       splitComma(data.DynamicForward),
-		ClearAllForwardings:  data.ClearAllForwardings,
+		Alias:                       data.Alias,
+		Host:                        data.Host,
+		User:                        data.User,
+		Port:                        port,
+		IdentityFiles:               keys,
+		Tags:                        tags,
+		ProxyJump:                   data.ProxyJump,
+		ProxyCommand:                data.ProxyCommand,
+		RemoteCommand:               data.RemoteCommand,
+		RequestTTY:                  data.RequestTTY,
+		SessionType:                 data.SessionType,
+		ConnectTimeout:              data.ConnectTimeout,
+		ConnectionAttempts:          data.ConnectionAttempts,
+		BindAddress:                 data.BindAddress,
+		BindInterface:               data.BindInterface,
+		AddressFamily:               data.AddressFamily,
+		ExitOnForwardFailure:        data.ExitOnForwardFailure,
+		IPQoS:                       data.IPQoS,
+		CanonicalizeHostname:        data.CanonicalizeHostname,
+		CanonicalDomains:            data.CanonicalDomains,
+		CanonicalizeFallbackLocal:   data.CanonicalizeFallbackLocal,
+		CanonicalizeMaxDots:         data.CanonicalizeMaxDots,
+		CanonicalizePermittedCNAMEs: data.CanonicalizePermittedCNAMEs,
+		GatewayPorts:                data.GatewayPorts,
+		LocalForward:                splitComma(data.LocalForward),
+		RemoteForward:               splitComma(data.RemoteForward),
+		DynamicForward:              splitComma(data.DynamicForward),
+		ClearAllForwardings:         data.ClearAllForwardings,
 		// Public key
 		PubkeyAuthentication: data.PubkeyAuthentication,
 		IdentitiesOnly:       data.IdentitiesOnly,
@@ -2261,6 +2274,8 @@ func (sf *ServerForm) dataToServer(data ServerFormData) domain.Server {
 		TCPKeepAlive:                data.TCPKeepAlive,
 		BatchMode:                   data.BatchMode,
 		StrictHostKeyChecking:       data.StrictHostKeyChecking,
+		CheckHostIP:                 data.CheckHostIP,
+		FingerprintHash:             data.FingerprintHash,
 		UserKnownHostsFile:          data.UserKnownHostsFile,
 		HostKeyAlgorithms:           data.HostKeyAlgorithms,
 		PubkeyAcceptedAlgorithms:    data.PubkeyAcceptedAlgorithms,

@@ -33,6 +33,7 @@ func DefaultStatusText() string {
 		keyText("c") + " Copy SSH",
 		keyText("h") + " Copy Host",
 		keyText("a") + " Add",
+		keyText("C") + " Clone",
 		keyText("e") + " Edit",
 		keyText("g") + " Ping",
 		keyText("d") + " Delete",
