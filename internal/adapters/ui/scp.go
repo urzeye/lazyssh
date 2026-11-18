@@ -15,17 +15,70 @@
 package ui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/rivo/tview"
 )
 
 const windowsOS = "windows"
+
+type SCPProtocol int
+
+const (
+	SCPOverSFTP SCPProtocol = iota
+	SCPLegacy
+)
+
+var (
+	scpUsageFlags    = regexp.MustCompile(`\[-([A-Za-z0-9]+)\]`)
+	remoteHomePrefix = regexp.MustCompile(`^~[A-Za-z0-9_.-]*(/|$)`)
+)
+
+func detectSCPProtocol() (SCPProtocol, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "scp", "-h").CombinedOutput()
+	if ctx.Err() != nil {
+		return 0, fmt.Errorf("inspect scp: %w", ctx.Err())
+	}
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		return 0, fmt.Errorf("inspect scp: %w", err)
+	}
+	return scpProtocolFromUsage(string(output))
+}
+
+func scpProtocolFromUsage(usage string) (SCPProtocol, error) {
+	flags := scpUsageFlags.FindStringSubmatch(usage)
+	if len(flags) != 2 {
+		return 0, fmt.Errorf("could not determine supported scp protocol from its usage output")
+	}
+	if strings.ContainsRune(flags[1], 's') {
+		return SCPOverSFTP, nil
+	}
+	return SCPLegacy, nil
+}
+
+func quoteLegacyRemotePath(value string) string {
+	// Tilde expansion belongs to the remote shell; all path characters after it
+	// remain literal, including spaces, apostrophes and shell metacharacters.
+	prefix := remoteHomePrefix.FindString(value)
+	value = strings.TrimPrefix(value, prefix)
+	if value == "" && prefix != "" {
+		return prefix
+	}
+	return prefix + "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
 
 func shellQuote(value string) string {
 	if runtime.GOOS == windowsOS {
@@ -34,7 +87,7 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, recursive bool) (string, error) {
+func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, recursive bool, protocol SCPProtocol) (string, error) {
 	for _, field := range []struct{ name, value string }{{"alias", alias}, {"SSH config", configPath}, {"local path", localPath}, {"remote path", remotePath}} {
 		if strings.TrimSpace(field.value) == "" || strings.ContainsAny(field.value, "\x00\r\n") {
 			return "", fmt.Errorf("%s must be nonempty and contain no line breaks", field.name)
@@ -58,7 +111,16 @@ func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, re
 	if runtime.GOOS != windowsOS && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {
 		localPath = "./" + localPath
 	}
-	parts := []string{"scp", "-F", shellQuote(configPath)}
+	parts := []string{"scp"}
+	switch protocol {
+	case SCPOverSFTP:
+		parts = append(parts, "-s")
+	case SCPLegacy:
+		remotePath = quoteLegacyRemotePath(remotePath)
+	default:
+		return "", fmt.Errorf("unsupported SCP protocol")
+	}
+	parts = append(parts, "-F", shellQuote(configPath))
 	if recursive {
 		parts = append(parts, "-r")
 	}
@@ -77,6 +139,11 @@ func (t *tui) handleSCP() {
 	if !ok {
 		return
 	}
+	protocol, err := detectSCPProtocol()
+	if err != nil {
+		t.showActionError("Inspect SCP client", err)
+		return
+	}
 	form := tview.NewForm()
 	form.SetBorder(true).SetTitle(" SCP command ")
 	local := tview.NewInputField().SetLabel("Local path:").SetFieldWidth(50)
@@ -84,7 +151,7 @@ func (t *tui) handleSCP() {
 	upload, recursive := true, false
 	preview := tview.NewTextView().SetWrap(true)
 	build := func() (string, error) {
-		return BuildSCPCommand(server.Alias, t.serverService.GetConfigFile(), local.GetText(), remote.GetText(), upload, recursive)
+		return BuildSCPCommand(server.Alias, t.serverService.GetConfigFile(), local.GetText(), remote.GetText(), upload, recursive, protocol)
 	}
 	update := func() {
 		command, err := build()
