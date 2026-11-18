@@ -69,6 +69,8 @@ func (sl *ServerList) build() {
 }
 
 func (sl *ServerList) UpdateServers(servers []domain.Server) {
+	selected, hadSelection := sl.GetSelectedServer()
+	selectedIndex := sl.List.GetCurrentItem()
 	sl.servers = servers
 	sl.List.Clear()
 
@@ -92,9 +94,18 @@ func (sl *ServerList) UpdateServers(servers []domain.Server) {
 	}
 
 	if sl.List.GetItemCount() > 0 {
-		sl.List.SetCurrentItem(0)
+		index := min(max(selectedIndex, 0), len(servers)-1)
+		if hadSelection {
+			for i := range servers {
+				if servers[i].Alias == selected.Alias {
+					index = i
+					break
+				}
+			}
+		}
+		sl.List.SetCurrentItem(index)
 		if sl.onSelectionChange != nil {
-			sl.onSelectionChange(sl.servers[0])
+			sl.onSelectionChange(sl.servers[index])
 		}
 	}
 }

@@ -48,6 +48,10 @@ func (m mockServerRepository) SetPinned(alias string, pinned bool) error {
 	return nil
 }
 
+func (m mockServerRepository) UpdateTags(server domain.Server, tags []string) error {
+	return nil
+}
+
 func (m mockServerRepository) RecordSSH(alias string) error {
 	return nil
 }

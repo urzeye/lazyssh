@@ -22,6 +22,7 @@ type ServerRepository interface {
 	AddServer(server domain.Server) error
 	DeleteServer(server domain.Server) error
 	SetPinned(alias string, pinned bool) error
+	UpdateTags(server domain.Server, tags []string) error
 	RecordSSH(alias string) error
 	GetConfigFile() string
 	IsReadOnly() bool

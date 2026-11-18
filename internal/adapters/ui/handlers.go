@@ -492,9 +492,14 @@ func (t *tui) showEditTagsForm(server domain.Server) {
 			}
 		}
 
-		newServer := server
-		newServer.Tags = tags
-		_ = t.serverService.UpdateServer(server, newServer)
+		if err := t.serverService.UpdateTags(server, tags); err != nil {
+			modal := tview.NewModal().
+				SetText(tview.Escape(fmt.Sprintf("Save tags failed: %v", err))).
+				AddButtons([]string{"Close"}).
+				SetDoneFunc(func(_ int, _ string) { t.app.SetRoot(form, true) })
+			t.app.SetRoot(modal, true)
+			return
+		}
 		// Refresh UI and go back
 		t.refreshServerList()
 		t.returnToMain()

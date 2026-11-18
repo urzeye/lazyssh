@@ -218,6 +218,17 @@ func (r *Repository) SetPinned(alias string, pinned bool) error {
 }
 
 // RecordSSH increments the SSH access count and updates the last seen timestamp for a server.
+func (r *Repository) UpdateTags(server domain.Server, tags []string) error {
+	if err := r.ensureWritable("edit tags"); err != nil {
+		return err
+	}
+	if server.Readonly {
+		return fmt.Errorf("server '%s' is defined in %s and cannot be edited here", server.Alias, server.SourceFile)
+	}
+	return r.metadataManager.setTags(server.Alias, tags)
+}
+
+// RecordSSH increments the SSH access count and updates the last seen timestamp for a server.
 func (r *Repository) RecordSSH(alias string) error {
 	return r.metadataManager.recordSSH(alias)
 }

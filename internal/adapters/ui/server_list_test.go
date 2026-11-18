@@ -49,3 +49,23 @@ func TestServerListSelectIndexRejectsOutOfRange(t *testing.T) {
 		t.Fatalf("SelectIndex() = true, want false")
 	}
 }
+
+func TestServerListPreservesSelectionAcrossRefresh(t *testing.T) {
+	list := NewServerList()
+	list.UpdateServers([]domain.Server{{Alias: "alpha"}, {Alias: "beta"}})
+	list.SelectServerByAlias("beta")
+	list.UpdateServers([]domain.Server{{Alias: "beta"}, {Alias: "alpha"}})
+	selected, ok := list.GetSelectedServer()
+	if !ok || selected.Alias != "beta" {
+		t.Fatalf("selection lost: %+v", selected)
+	}
+	list.UpdateServers([]domain.Server{{Alias: "alpha"}})
+	selected, ok = list.GetSelectedServer()
+	if !ok || selected.Alias != "alpha" {
+		t.Fatalf("removed selection not clamped: %+v", selected)
+	}
+	list.UpdateServers(nil)
+	if _, ok := list.GetSelectedServer(); ok {
+		t.Fatal("empty list retains selection")
+	}
+}

@@ -131,6 +131,17 @@ func (m *metadataManager) deleteServer(alias string) error {
 	return m.saveAll(metadata)
 }
 
+func (m *metadataManager) setTags(alias string, tags []string) error {
+	metadata, err := m.loadAll()
+	if err != nil {
+		return fmt.Errorf("load metadata: %w", err)
+	}
+	meta := metadata[alias]
+	meta.Tags = tags
+	metadata[alias] = meta
+	return m.saveAll(metadata)
+}
+
 func (m *metadataManager) setPinned(alias string, pinned bool) error {
 	metadata, err := m.loadAll()
 	if err != nil {

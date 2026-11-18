@@ -311,6 +311,11 @@ func (s *serverService) SetPinned(alias string, pinned bool) error {
 }
 
 // SSH starts an interactive SSH session to the given alias using the system's ssh client.
+func (s *serverService) UpdateTags(server domain.Server, tags []string) error {
+	return s.serverRepository.UpdateTags(server, tags)
+}
+
+// SSH starts an interactive SSH session to the given alias using the system's ssh client.
 func (s *serverService) SSH(alias string) error {
 	s.logger.Infow("ssh start", "alias", alias)
 	// #nosec G204 -- lazyssh intentionally delegates to the user's local ssh client
