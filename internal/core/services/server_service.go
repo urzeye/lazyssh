@@ -321,10 +321,7 @@ func (s *serverService) SSH(alias string) error {
 	// #nosec G204 -- lazyssh intentionally delegates to the user's local ssh client
 	// using the selected alias and configured SSH config path.
 	cmd := exec.Command("ssh", "-F", s.serverRepository.GetConfigFile(), alias)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runInteractiveSSH(cmd); err != nil {
 		s.logger.Errorw("ssh command failed", "alias", alias, "error", err)
 		return err
 	}
@@ -344,10 +341,7 @@ func (s *serverService) SSHWithArgs(alias string, extraArgs []string) error {
 	args = append(args, "-F", s.serverRepository.GetConfigFile(), alias)
 	// #nosec G204
 	cmd := exec.Command("ssh", args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runInteractiveSSH(cmd); err != nil {
 		s.logger.Errorw("ssh (with args) failed", "alias", alias, "error", err)
 		return err
 	}

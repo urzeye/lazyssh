@@ -285,11 +285,29 @@ func (t *tui) handleReturnToSearch() {
 
 func (t *tui) handleServerConnect() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
+		t.runSSHSession(server.Alias, nil)
+	}
+}
 
-		t.app.Suspend(func() {
-			_ = t.serverService.SSH(server.Alias)
-		})
-		t.refreshServerList()
+func (t *tui) runSSHSession(alias string, extraArgs []string) {
+	var sshErr error
+	if !t.app.Suspend(func() {
+		if len(extraArgs) == 0 {
+			sshErr = t.serverService.SSH(alias)
+		} else {
+			sshErr = t.serverService.SSHWithArgs(alias, extraArgs)
+		}
+	}) {
+		sshErr = fmt.Errorf("could not suspend the terminal for SSH")
+	}
+	t.refreshServerList()
+	t.returnToMain()
+	if sshErr != nil {
+		modal := tview.NewModal().
+			SetText(tview.Escape(fmt.Sprintf("SSH to %s failed:\n\n%v", alias, sshErr))).
+			AddButtons([]string{"Close"}).
+			SetDoneFunc(func(_ int, _ string) { t.returnToMain() })
+		t.app.SetRoot(modal, true)
 	}
 }
 
@@ -637,10 +655,7 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 			return
 		}
 
-		t.app.Suspend(func() {
-			_ = t.serverService.SSHWithArgs(alias, args)
-		})
-		t.returnToMain()
+		t.runSSHSession(alias, args)
 	})
 	form.AddButton("Cancel", func() { t.returnToMain() })
 	form.SetCancelFunc(func() { t.returnToMain() })
