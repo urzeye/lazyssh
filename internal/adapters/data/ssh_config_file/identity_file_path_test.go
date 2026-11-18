@@ -27,6 +27,7 @@ import (
 func TestAddServerStoresIdentityFileRelativeToHome(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome)
 
 	configPath := filepath.Join(tempHome, ".ssh", "config")
 	metadataPath := filepath.Join(tempHome, "metadata.json")
@@ -69,6 +70,7 @@ func TestAddServerStoresIdentityFileRelativeToHome(t *testing.T) {
 func TestUpdateServerStoresIdentityFileRelativeToHome(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome)
 
 	configPath := filepath.Join(tempHome, ".ssh", "config")
 	metadataPath := filepath.Join(tempHome, "metadata.json")
