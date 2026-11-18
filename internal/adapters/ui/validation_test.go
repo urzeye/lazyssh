@@ -214,7 +214,7 @@ func TestFieldValidatorPatterns(t *testing.T) {
 		{"User", "user.name", false},
 		{"User", "user@name", false},
 		{"User", "user:name", false},
-		{"User", "1user", true}, // Can't start with number
+		{"User", "1user", false}, // SSH accepts digit-leading usernames.
 
 		// ConnectTimeout field
 		{"ConnectTimeout", "none", false},
