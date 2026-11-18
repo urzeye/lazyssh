@@ -65,6 +65,9 @@ func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	case 'C':
 		t.handleServerClone()
 		return nil
+	case 'v':
+		t.handlePasteSSH()
+		return nil
 	case 'e':
 		t.handleServerEdit()
 		return nil
@@ -352,6 +355,36 @@ func (t *tui) handleServerClone() {
 	}
 	clone := cloneServer(server, servers)
 	t.showAddServerForm(&clone)
+}
+
+func (t *tui) handlePasteSSH() {
+	if t.serverService.IsReadOnly() {
+		t.showStatusTempColor("Read-only mode: SSH config changes are disabled", CurrentTheme.Warning)
+		return
+	}
+	text, err := clipboard.ReadAll()
+	if err != nil {
+		t.showActionError("Read clipboard", err)
+		return
+	}
+	server, err := ParseSSHCommand(text)
+	if err != nil {
+		t.showActionError("Import SSH command", err)
+		return
+	}
+	servers, err := t.serverService.ListServers("")
+	if err != nil {
+		t.showActionError("Load hosts", err)
+		return
+	}
+	server.Alias = uniqueAlias(server.Alias, servers)
+	t.showAddServerForm(&server)
+}
+
+func (t *tui) showActionError(action string, err error) {
+	modal := tview.NewModal().SetText(tview.Escape(fmt.Sprintf("%s failed:\n\n%v", action, err))).
+		AddButtons([]string{"Close"}).SetDoneFunc(func(_ int, _ string) { t.returnToMain() })
+	t.app.SetRoot(modal, true)
 }
 
 func (t *tui) handleServerEdit() {
