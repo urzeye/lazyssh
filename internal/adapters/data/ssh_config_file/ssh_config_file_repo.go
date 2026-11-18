@@ -217,7 +217,7 @@ func (r *Repository) SetPinned(alias string, pinned bool) error {
 	return r.metadataManager.setPinned(alias, pinned)
 }
 
-// RecordSSH increments the SSH access count and updates the last seen timestamp for a server.
+// UpdateTags writes only metadata and respects the configured edit restrictions.
 func (r *Repository) UpdateTags(server domain.Server, tags []string) error {
 	if err := r.ensureWritable("edit tags"); err != nil {
 		return err

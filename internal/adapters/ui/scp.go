@@ -1,3 +1,17 @@
+// Copyright 2025.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package ui
 
 import (
@@ -11,8 +25,10 @@ import (
 	"github.com/rivo/tview"
 )
 
+const windowsOS = "windows"
+
 func shellQuote(value string) string {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windowsOS {
 		return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
@@ -39,7 +55,7 @@ func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, re
 		}
 	}
 	// A relative local filename containing ':' otherwise looks like a remote target.
-	if runtime.GOOS != "windows" && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {
+	if runtime.GOOS != windowsOS && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {
 		localPath = "./" + localPath
 	}
 	parts := []string{"scp", "-F", shellQuote(configPath)}

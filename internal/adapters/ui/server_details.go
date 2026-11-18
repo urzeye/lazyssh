@@ -65,7 +65,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	if sourceText == "" {
 		sourceText = "Unknown"
 	}
-	editableText := "yes"
+	editableText := sshYes
 	if server.Readonly {
 		editableText = "no (included config)"
 	}

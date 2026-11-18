@@ -101,7 +101,8 @@ func newRootCommand(log *zap.SugaredLogger, home string) *cobra.Command {
 			if connect != "" {
 				return connectAlias(serverService, connect)
 			}
-			tui := ui.NewTUI(log, serverService, version, gitCommit, ui.Options{InitialFilter: filter, ExitAfterSession: exitAfterSession})
+			options := ui.Options{InitialFilter: filter, ExitAfterSession: exitAfterSession}
+			tui := ui.NewTUI(log, serverService, version, gitCommit, options)
 			return tui.Run()
 		},
 	}
@@ -117,7 +118,7 @@ func newRootCommand(log *zap.SugaredLogger, home string) *cobra.Command {
 	rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
 	rootCmd.Flags().StringVarP(&filter, "filter", "f", "", "initial host filter")
-	rootCmd.Flags().StringVarP(&connect, "connect", "c", "", "connect to an exact configured alias without opening the TUI")
+	rootCmd.Flags().StringVarP(&connect, "connect", "c", "", "connect to an exact alias without opening the TUI")
 	rootCmd.Flags().BoolVar(&exitAfterSession, "exit-after-session", false, "exit after the selected SSH session finishes")
 	return rootCmd
 }

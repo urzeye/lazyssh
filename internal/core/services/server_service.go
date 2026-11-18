@@ -320,7 +320,7 @@ func (s *serverService) SetPinned(alias string, pinned bool) error {
 	return err
 }
 
-// SSH starts an interactive SSH session to the given alias using the system's ssh client.
+// UpdateTags persists tags without changing SSH configuration or connection statistics.
 func (s *serverService) UpdateTags(server domain.Server, tags []string) error {
 	return s.serverRepository.UpdateTags(server, tags)
 }
@@ -344,7 +344,7 @@ func (s *serverService) SSH(alias string) error {
 	return nil
 }
 
-// SSHWithArgs runs system ssh with provided extra args (e.g., -L/-R/-D) for the given alias.
+// SFTP starts an interactive session using the selected root configuration.
 func (s *serverService) SFTP(alias string) error {
 	return runInteractiveSSH(s.sftpCommand("-F", s.serverRepository.GetConfigFile(), alias))
 }

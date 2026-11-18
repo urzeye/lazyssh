@@ -137,24 +137,24 @@ func applySSHDestination(server *domain.Server, target string) error {
 
 func applyPastedSSHFlag(server *domain.Server, flag byte) error {
 	if flag == 'Y' {
-		server.ForwardX11 = "yes"
-		server.ForwardX11Trusted = "yes"
+		server.ForwardX11 = sshYes
+		server.ForwardX11Trusted = sshYes
 		return nil
 	}
 	options := map[byte]struct {
 		field *string
 		value string
 	}{
-		'A': {&server.ForwardAgent, "yes"}, 'a': {&server.ForwardAgent, "no"},
-		'X': {&server.ForwardX11, "yes"}, 'x': {&server.ForwardX11, "no"},
-		'C': {&server.Compression, "yes"}, '4': {&server.AddressFamily, "inet"}, '6': {&server.AddressFamily, "inet6"},
-		'T': {&server.RequestTTY, "no"}, 'N': {&server.SessionType, "none"}, 's': {&server.SessionType, "subsystem"}, 'q': {&server.LogLevel, "QUIET"},
+		'A': {&server.ForwardAgent, sshYes}, 'a': {&server.ForwardAgent, sshNo},
+		'X': {&server.ForwardX11, sshYes}, 'x': {&server.ForwardX11, sshNo},
+		'C': {&server.Compression, sshYes}, '4': {&server.AddressFamily, "inet"}, '6': {&server.AddressFamily, "inet6"},
+		'T': {&server.RequestTTY, sshNo}, 'N': {&server.SessionType, sessionTypeNone}, 's': {&server.SessionType, sessionTypeSubsystem}, 'q': {&server.LogLevel, "QUIET"},
 	}
 	if flag == 't' {
-		if server.RequestTTY == "yes" || server.RequestTTY == "force" {
-			server.RequestTTY = "force"
+		if server.RequestTTY == sshYes || server.RequestTTY == sshForce {
+			server.RequestTTY = sshForce
 		} else {
-			server.RequestTTY = "yes"
+			server.RequestTTY = sshYes
 		}
 		return nil
 	}
