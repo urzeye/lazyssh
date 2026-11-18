@@ -121,11 +121,6 @@ func (r *Repository) createHostFromServer(server domain.Server) *ssh_config.Host
 	for _, identityFile := range server.IdentityFiles {
 		r.addKVNodeIfNotEmpty(host, "IdentityFile", normalizeIdentityFilePath(identityFile))
 	}
-	// These options compete in OpenSSH; preserve the original new-host order
-	// before the shared updater visits its unordered scalar settings.
-	r.addKVNodeIfNotEmpty(host, "ProxyJump", server.ProxyJump)
-	r.addKVNodeIfNotEmpty(host, "ProxyCommand", server.ProxyCommand)
-
 	r.updateHostNodes(host, server)
 
 	return host
@@ -203,6 +198,10 @@ func removeNodesByKey(nodes []ssh_config.Node, key string) []ssh_config.Node {
 
 // updateHostNodes updates the nodes of an existing host with new server details.
 func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Server) {
+	// OpenSSH uses the first proxy directive. Keep existing directive positions,
+	// and insert Jump before Command when both are new, independently of map order.
+	r.setHostOption(host, "proxyjump", newServer.ProxyJump)
+	r.setHostOption(host, "proxycommand", newServer.ProxyCommand)
 	// Handle Port - include if explicitly set (even if it's 22)
 	portValue := ""
 	if newServer.Port != 0 {
@@ -213,8 +212,6 @@ func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Ser
 		"hostname":                        newServer.Host,
 		"user":                            newServer.User,
 		"port":                            portValue,
-		"proxycommand":                    newServer.ProxyCommand,
-		"proxyjump":                       newServer.ProxyJump,
 		"remotecommand":                   newServer.RemoteCommand,
 		"requesttty":                      newServer.RequestTTY,
 		"sessiontype":                     newServer.SessionType,
@@ -277,12 +274,7 @@ func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Ser
 
 	// Update or remove nodes based on value
 	for key, value := range updates {
-		if value != "" {
-			r.updateOrAddKVNode(host, key, value)
-		} else {
-			// Remove the key if value is empty (user selected default)
-			r.removeKVNode(host, key)
-		}
+		r.setHostOption(host, key, value)
 	}
 
 	// Replace multi-value entries entirely to reflect the new state
@@ -317,6 +309,14 @@ func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Ser
 	for _, env := range newServer.SetEnv {
 		r.addKVNodeIfNotEmpty(host, "SetEnv", env)
 	}
+}
+
+func (r *Repository) setHostOption(host *ssh_config.Host, key, value string) {
+	if value == "" {
+		r.removeKVNode(host, key)
+		return
+	}
+	r.updateOrAddKVNode(host, key, value)
 }
 
 // updateOrAddKVNode updates an existing key-value node or adds a new one if it doesn't exist.

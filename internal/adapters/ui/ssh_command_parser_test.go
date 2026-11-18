@@ -47,6 +47,20 @@ func TestParseSSHCommand(t *testing.T) {
 	}
 }
 
+func TestImportedProxyDirectiveOrder(t *testing.T) {
+	for _, tc := range []struct{ command, jump, proxy string }{
+		{`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`, "bastion", ""},
+		{`ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`, "", "nc %h %p"},
+		{`ssh -o ProxyCommand=none -o ProxyJump=bastion host`, "", "none"},
+		{`ssh -o ProxyJump=none -o ProxyCommand=netcat host`, "none", "netcat"},
+	} {
+		server, err := ParseSSHCommand(tc.command)
+		if err != nil || server.ProxyJump != tc.jump || server.ProxyCommand != tc.proxy {
+			t.Errorf("%s: jump=%q proxy=%q %v", tc.command, server.ProxyJump, server.ProxyCommand, err)
+		}
+	}
+}
+
 func TestImportedCommentsDoNotBecomeRemoteCommands(t *testing.T) {
 	server, err := ParseSSHCommand("ssh user@host # production")
 	if err != nil || server.User != "user" || server.Host != "host" || server.RemoteCommand != "" {

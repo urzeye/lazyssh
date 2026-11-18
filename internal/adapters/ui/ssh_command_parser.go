@@ -206,6 +206,15 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 		return fmt.Errorf("SSH option %s has an empty value", key)
 	}
 	key = strings.ToLower(key)
+	if key == "proxyjump" {
+		if server.ProxyCommand == "" && (server.ProxyJump == "" || server.ProxyJump == sessionTypeNone) {
+			server.ProxyJump = value
+		}
+		return nil
+	}
+	if key == "proxycommand" && server.ProxyJump != "" && server.ProxyJump != sessionTypeNone {
+		return nil
+	}
 	if key == "port" {
 		port, err := strconv.Atoi(value)
 		if err != nil || port < 1 || port > 65535 {
@@ -225,7 +234,7 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 		return nil
 	}
 	fields := map[string]*string{
-		"hostname": &server.Host, "user": &server.User, "proxyjump": &server.ProxyJump, "proxycommand": &server.ProxyCommand,
+		"hostname": &server.Host, "user": &server.User, "proxycommand": &server.ProxyCommand,
 		"remotecommand": &server.RemoteCommand, "requesttty": &server.RequestTTY, "sessiontype": &server.SessionType,
 		"connecttimeout": &server.ConnectTimeout, "connectionattempts": &server.ConnectionAttempts,
 		"bindaddress": &server.BindAddress, "bindinterface": &server.BindInterface, "addressfamily": &server.AddressFamily,
