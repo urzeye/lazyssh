@@ -47,6 +47,36 @@ func TestParseSSHCommand(t *testing.T) {
 	}
 }
 
+func TestImportedCommentsDoNotBecomeRemoteCommands(t *testing.T) {
+	server, err := ParseSSHCommand("ssh user@host # production")
+	if err != nil || server.User != "user" || server.Host != "host" || server.RemoteCommand != "" {
+		t.Fatalf("comment imported as command: %+v %v", server, err)
+	}
+	for _, windows := range []bool{false, true} {
+		for _, tc := range []struct {
+			command string
+			want    []string
+		}{
+			{"ssh host # production", []string{"ssh", "host"}},
+			{`ssh host '#literal'`, []string{"ssh", "host", "#literal"}},
+			{`ssh host "#literal"`, []string{"ssh", "host", "#literal"}},
+			{`ssh host echo value#suffix # comment`, []string{"ssh", "host", "echo", "value#suffix"}},
+		} {
+			args, err := splitSSHCommandForPlatform(tc.command, windows)
+			if err != nil || !slices.Equal(args, tc.want) {
+				t.Errorf("%q Windows=%v: got %q %v", tc.command, windows, args, err)
+			}
+		}
+		if _, err := splitSSHCommandForPlatform("ssh host # first\nssh other", windows); err == nil {
+			t.Fatal("comment hid a second command")
+		}
+	}
+	args, err := splitSSHCommandForPlatform(`ssh host \#literal`, false)
+	if err != nil || !slices.Equal(args, []string{"ssh", "host", "#literal"}) {
+		t.Fatalf("escaped hash lost: %q %v", args, err)
+	}
+}
+
 func TestImportedDestinationOptionOrder(t *testing.T) {
 	for _, tc := range []struct {
 		command, user, host string

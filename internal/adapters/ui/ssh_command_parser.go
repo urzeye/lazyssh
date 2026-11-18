@@ -261,6 +261,9 @@ func splitSSHCommand(text string) ([]string, error) {
 
 func splitSSHCommandForPlatform(text string, windows bool) ([]string, error) {
 	text = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", ""), "\\\n", ""))
+	if strings.ContainsAny(text, "\x00\r\n") {
+		return nil, fmt.Errorf("paste a single SSH command; use backslash continuation for multiple lines")
+	}
 	var args []string
 	var token strings.Builder
 	var quote rune
@@ -275,9 +278,6 @@ func splitSSHCommandForPlatform(text string, windows bool) ([]string, error) {
 	}
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
-		if r == 0 || r == '\n' || r == '\r' {
-			return nil, fmt.Errorf("paste a single SSH command; use backslash continuation for multiple lines")
-		}
 		if r == '\\' && quote != '\'' && !windows {
 			if i+1 == len(runes) {
 				return nil, fmt.Errorf("unfinished escape in SSH command")
@@ -315,6 +315,9 @@ func splitSSHCommandForPlatform(text string, windows bool) ([]string, error) {
 		if unicode.IsSpace(r) {
 			flush()
 			continue
+		}
+		if r == '#' && !started {
+			break
 		}
 		if strings.ContainsRune(";|&<>`", r) {
 			return nil, fmt.Errorf("shell operators are not supported in pasted SSH commands")
