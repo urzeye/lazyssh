@@ -16,8 +16,10 @@ package ui
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,6 +44,66 @@ func TestParseSSHCommand(t *testing.T) {
 	server, err = ParseSSHCommand("ssh \\\n-p 2222 example")
 	if err != nil || server.Port != 2222 {
 		t.Fatalf("continuation: %+v %v", server, err)
+	}
+}
+
+func TestImportedDestinationOptionOrder(t *testing.T) {
+	for _, tc := range []struct {
+		command, user, host string
+		port                int
+	}{
+		{"ssh alice@host -l bob", "alice", "host", 22},
+		{"ssh -l before alice@host -l after", "before", "host", 22},
+		{"ssh ssh://alice@host:2222 -p 3333", "alice", "host", 2222},
+		{"ssh -p 3333 ssh://alice@host:2222 -p 4444", "alice", "host", 3333},
+		{"ssh host -o HostName=127.0.0.1", "", "127.0.0.1", 22},
+		{"ssh -o HostName=127.0.0.2 host", "", "127.0.0.2", 22},
+	} {
+		server, err := ParseSSHCommand(tc.command)
+		if err != nil || server.User != tc.user || server.Host != tc.host || server.Port != tc.port {
+			t.Errorf("%s: %+v %v", tc.command, server, err)
+		}
+	}
+	for _, command := range []string{"ssh -- host uname", "ssh host -- uname", "ssh host --", "ssh -- host -literal-command"} {
+		if _, err := ParseSSHCommand(command); err != nil {
+			t.Errorf("%s: %v", command, err)
+		}
+	}
+}
+
+func TestImportedDestinationMatchesOpenSSH(t *testing.T) {
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Skip("OpenSSH unavailable")
+	}
+	config := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(config, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"ssh alice@host -l bob", "ssh -l before alice@host -l after", "ssh ssh://alice@host:2222 -p 3333", "ssh -p 3333 ssh://alice@host:2222 -p 4444", "ssh host -o HostName=127.0.0.1"} {
+		server, err := ParseSSHCommand(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens, err := splitSSHCommand(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := append([]string{"-G", "-F", config}, tokens[1:]...)
+		output, err := exec.Command(ssh, args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("OpenSSH %s: %v\n%s", command, err, output)
+		}
+		values := make(map[string]string)
+		for _, line := range strings.Split(string(output), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 {
+				values[fields[0]] = fields[1]
+			}
+		}
+		if server.Host != values["hostname"] || strconv.Itoa(server.Port) != values["port"] || server.User != "" && server.User != values["user"] {
+			t.Fatalf("%s: imported user/host/port %q %q %d differs from OpenSSH %q %q %q", command, server.User, server.Host, server.Port, values["user"], values["hostname"], values["port"])
+		}
 	}
 }
 

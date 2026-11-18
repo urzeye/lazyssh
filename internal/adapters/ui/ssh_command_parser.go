@@ -40,18 +40,28 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
-			if target != "" || i+1 >= len(args) {
-				return domain.Server{}, fmt.Errorf("missing or ambiguous SSH destination")
+			i++
+			if target == "" {
+				if i >= len(args) {
+					return domain.Server{}, fmt.Errorf("missing SSH destination")
+				}
+				target, err = applySSHDestination(&server, args[i])
+				if err != nil {
+					return domain.Server{}, err
+				}
+				i++
 			}
-			target = args[i+1]
-			if err := setPositionalRemoteCommand(&server, args[i+2:]); err != nil {
+			if err := setPositionalRemoteCommand(&server, args[i:]); err != nil {
 				return domain.Server{}, err
 			}
 			break
 		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			if target == "" {
-				target = arg
+				target, err = applySSHDestination(&server, arg)
+				if err != nil {
+					return domain.Server{}, err
+				}
 				continue
 			}
 			if err := setPositionalRemoteCommand(&server, args[i:]); err != nil {
@@ -91,8 +101,8 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 	if target == "" || strings.HasPrefix(target, "-") {
 		return domain.Server{}, fmt.Errorf("missing or invalid SSH destination")
 	}
-	if err := applySSHDestination(&server, target); err != nil {
-		return domain.Server{}, err
+	if server.Host == "" {
+		server.Host = target
 	}
 	server.Alias = uniqueAlias(server.Host, nil)
 	if server.Port == 0 {
@@ -114,43 +124,40 @@ func setPositionalRemoteCommand(server *domain.Server, args []string) error {
 	return nil
 }
 
-func applySSHDestination(server *domain.Server, target string) error {
+func applySSHDestination(server *domain.Server, target string) (string, error) {
 	if strings.HasPrefix(target, "ssh://") {
 		u, err := url.Parse(target)
 		if err != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("invalid SSH URI")
+			return "", fmt.Errorf("invalid SSH URI")
 		}
 		if u.User != nil {
 			if _, hasPassword := u.User.Password(); hasPassword {
-				return fmt.Errorf("SSH URI passwords cannot be imported")
+				return "", fmt.Errorf("SSH URI passwords cannot be imported")
 			}
 			if err := applyPastedSSHOption(server, "User", u.User.Username()); err != nil {
-				return err
+				return "", err
 			}
 		}
 		if u.Port() != "" {
 			if err := applyPastedSSHOption(server, "Port", u.Port()); err != nil {
-				return err
+				return "", err
 			}
 		}
 		target = u.Hostname()
 	} else if index := strings.LastIndex(target, "@"); index >= 0 {
 		if index == 0 {
-			return fmt.Errorf("SSH destination has an empty user")
+			return "", fmt.Errorf("SSH destination has an empty user")
 		}
 		if err := applyPastedSSHOption(server, "User", target[:index]); err != nil {
-			return err
+			return "", err
 		}
 		target = target[index+1:]
 	}
 	target = strings.TrimPrefix(strings.TrimSuffix(target, "]"), "[")
 	if target == "" {
-		return fmt.Errorf("SSH destination has an empty host")
+		return "", fmt.Errorf("SSH destination has an empty host")
 	}
-	if server.Host == "" {
-		server.Host = target
-	}
-	return nil
+	return target, nil
 }
 
 func applyPastedSSHFlag(server *domain.Server, flag byte) error {
