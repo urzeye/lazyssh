@@ -15,28 +15,32 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/urzeye/lazyssh/internal/adapters/data/ssh_config_file"
 	"github.com/urzeye/lazyssh/internal/adapters/ui"
+	"github.com/urzeye/lazyssh/internal/core/ports"
 	"github.com/urzeye/lazyssh/internal/core/services"
 	"github.com/urzeye/lazyssh/internal/logger"
+	"go.uber.org/zap"
 )
 
 var (
-	version              = "develop"
-	gitCommit            = "unknown"
-	sshConfigFile        string
-	managedMode          bool
-	managedSSHConfigFile string
-	sshConfigReadOnly    bool
+	version   = "develop"
+	gitCommit = "unknown"
 )
 
-func main() {
+func newRootCommand(log *zap.SugaredLogger, home string) *cobra.Command {
+	var sshConfigFile, managedSSHConfigFile, filter, connect string
+	var managedMode, sshConfigReadOnly, exitAfterSession bool
 	const (
 		sshConfigHelp        = "path to ssh config file (default: ~/.ssh/config)"
 		managedModeHelp      = "read from the root ssh config but write changes to a managed ssh config file"
@@ -46,34 +50,45 @@ func main() {
 			"(can also be set with LAZYSSH_SSH_CONFIG_READONLY=1)"
 	)
 
-	log, err := logger.New("LAZYSSH")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	//nolint:errcheck // log.Sync may return an error which is safe to ignore here
-	defer log.Sync()
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		log.Errorw("failed to get user home directory", "error", err)
-		//nolint:gocritic // exitAfterDefer: ensure immediate exit on unrecoverable error
-		os.Exit(1)
-	}
 	rootCmd := &cobra.Command{
-		Use:   ui.AppName,
+		Use:   ui.AppName + " [filter]",
 		Short: "Lazy SSH server picker TUI",
+		Args:  cobra.MaximumNArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				if cmd.Flags().Changed("filter") {
+					return fmt.Errorf("use either [filter] or --filter")
+				}
+				filter = args[0]
+			}
+			if connect != "" && filter != "" {
+				return fmt.Errorf("--connect cannot be combined with a filter")
+			}
+			if cmd.Flags().Changed("connect") && connect == "" {
+				return fmt.Errorf("--connect requires a nonempty alias")
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath := sshConfigFile
 			if configPath == "" {
 				configPath = filepath.Join(home, ".ssh", "config")
+			}
+			configPath, err := absoluteConfigPath(configPath, home)
+			if err != nil {
+				return err
 			}
 
 			managedConfigPath := managedSSHConfigFile
 			useManagedMode := managedMode || managedConfigPath != ""
 			if useManagedMode && managedConfigPath == "" {
 				managedConfigPath = filepath.Join(home, ".ssh", "config.local")
+			}
+			if managedConfigPath != "" {
+				managedConfigPath, err = absoluteConfigPath(managedConfigPath, home)
+				if err != nil {
+					return err
+				}
 			}
 
 			metaDataFile := filepath.Join(home, ".lazyssh", "metadata.json")
@@ -83,7 +98,10 @@ func main() {
 			}
 
 			serverService := services.NewServerService(log, serverRepo)
-			tui := ui.NewTUI(log, serverService, version, gitCommit)
+			if connect != "" {
+				return connectAlias(serverService, connect)
+			}
+			tui := ui.NewTUI(log, serverService, version, gitCommit, ui.Options{InitialFilter: filter, ExitAfterSession: exitAfterSession})
 			return tui.Run()
 		},
 	}
@@ -97,11 +115,61 @@ func main() {
 		sshConfigReadOnlyHelp,
 	)
 	rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
+	rootCmd.Flags().StringVarP(&filter, "filter", "f", "", "initial host filter")
+	rootCmd.Flags().StringVarP(&connect, "connect", "c", "", "connect to an exact configured alias without opening the TUI")
+	rootCmd.Flags().BoolVar(&exitAfterSession, "exit-after-session", false, "exit after the selected SSH session finishes")
+	return rootCmd
+}
 
-	if err := rootCmd.Execute(); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	log, err := logger.New("LAZYSSH")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
+	defer func() { _ = log.Sync() }()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := newRootCommand(log, home).Execute(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
+			return exitErr.ExitCode()
+		}
+		return 1
+	}
+	return 0
+}
+
+func absoluteConfigPath(configPath, home string) (string, error) {
+	if configPath == "~" {
+		configPath = home
+	}
+	if strings.HasPrefix(configPath, "~/") || strings.HasPrefix(configPath, "~\\") {
+		configPath = filepath.Join(home, configPath[2:])
+	}
+	return filepath.Abs(configPath)
+}
+
+func connectAlias(service ports.ServerService, alias string) error {
+	servers, err := service.ListServers("")
+	if err != nil {
+		return err
+	}
+	for _, server := range servers {
+		if server.Alias == alias || slices.Contains(server.Aliases, alias) {
+			return service.SSH(alias)
+		}
+	}
+	return fmt.Errorf("no configured host has alias %q", alias)
 }
 
 func envBool(name string) bool {

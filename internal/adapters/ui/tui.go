@@ -28,11 +28,18 @@ type App interface {
 	Run() error
 }
 
+type Options struct {
+	InitialFilter    string
+	ExitAfterSession bool
+}
+
 type tui struct {
 	logger *zap.SugaredLogger
 
-	version string
-	commit  string
+	version    string
+	commit     string
+	options    Options
+	sessionErr error
 
 	app           *tview.Application
 	serverService ports.ServerService
@@ -73,8 +80,8 @@ const (
 
 const activeSessionsRefreshInterval = 10 * time.Second
 
-func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string) App {
-	return &tui{
+func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit string, options ...Options) App {
+	view := &tui{
 		logger:        logger,
 		app:           tview.NewApplication(),
 		serverService: ss,
@@ -84,6 +91,10 @@ func NewTUI(logger *zap.SugaredLogger, ss ports.ServerService, version, commit s
 		sortMode:      SortByAliasAsc,
 		themeMode:     ThemeDark,
 	}
+	if len(options) > 0 {
+		view.options = options[0]
+	}
+	return view
 }
 
 func (t *tui) Run() error {
@@ -103,7 +114,7 @@ func (t *tui) Run() error {
 		t.logger.Errorw("application run error", "error", err)
 		return err
 	}
-	return nil
+	return t.sessionErr
 }
 
 func (t *tui) initializeTheme() *tui {
@@ -184,7 +195,12 @@ func (t *tui) bindEvents() {
 }
 
 func (t *tui) loadInitialData() {
-	t.loadServerList("")
+	if t.options.InitialFilter != "" {
+		t.showSearchBar()
+		t.searchBar.SetText(t.options.InitialFilter)
+	} else {
+		t.loadServerList("")
+	}
 	t.loadActiveSessions()
 }
 

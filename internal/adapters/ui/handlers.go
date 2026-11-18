@@ -306,6 +306,11 @@ func (t *tui) runSSHSession(alias string, extraArgs []string) {
 	}) {
 		sshErr = fmt.Errorf("could not suspend the terminal for SSH")
 	}
+	if t.options.ExitAfterSession {
+		t.sessionErr = sshErr
+		t.app.Stop()
+		return
+	}
 	t.refreshServerList()
 	t.returnToMain()
 	if sshErr != nil {
