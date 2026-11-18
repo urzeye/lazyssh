@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -248,6 +249,10 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 }
 
 func splitSSHCommand(text string) ([]string, error) {
+	return splitSSHCommandForPlatform(text, runtime.GOOS == windowsOS)
+}
+
+func splitSSHCommandForPlatform(text string, windows bool) ([]string, error) {
 	text = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\\\r\n", ""), "\\\n", ""))
 	var args []string
 	var token strings.Builder
@@ -266,7 +271,7 @@ func splitSSHCommand(text string) ([]string, error) {
 		if r == 0 || r == '\n' || r == '\r' {
 			return nil, fmt.Errorf("paste a single SSH command; use backslash continuation for multiple lines")
 		}
-		if r == '\\' && quote != '\'' {
+		if r == '\\' && quote != '\'' && !windows {
 			if i+1 == len(runes) {
 				return nil, fmt.Errorf("unfinished escape in SSH command")
 			}
@@ -283,6 +288,11 @@ func splitSSHCommand(text string) ([]string, error) {
 		}
 		if quote != 0 {
 			if r == quote {
+				if windows && quote == '\'' && i+1 < len(runes) && runes[i+1] == '\'' {
+					token.WriteRune(r)
+					i++
+					continue
+				}
 				quote = 0
 			} else {
 				token.WriteRune(r)

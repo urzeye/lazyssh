@@ -17,6 +17,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,6 +42,26 @@ func TestParseSSHCommand(t *testing.T) {
 	server, err = ParseSSHCommand("ssh \\\n-p 2222 example")
 	if err != nil || server.Port != 2222 {
 		t.Fatalf("continuation: %+v %v", server, err)
+	}
+}
+
+func TestSSHCommandLexingPreservesPlatformPaths(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		windows bool
+		want    []string
+	}{
+		{`ssh -i C:\keys\id_ed25519 user@host`, true, []string{"ssh", "-i", `C:\keys\id_ed25519`, "user@host"}},
+		{`ssh -i "C:\test user\id_ed25519" host`, true, []string{"ssh", "-i", `C:\test user\id_ed25519`, "host"}},
+		{`ssh -i \\server\share\id_ed25519 host`, true, []string{"ssh", "-i", `\\server\share\id_ed25519`, "host"}},
+		{`ssh -i 'C:\keys\O''Brien\id' host`, true, []string{"ssh", "-i", `C:\keys\O'Brien\id`, "host"}},
+		{`ssh -i ~/.ssh/test\ key host`, false, []string{"ssh", "-i", "~/.ssh/test key", "host"}},
+		{`ssh -o 'ProxyCommand=printf \\value' host`, false, []string{"ssh", "-o", `ProxyCommand=printf \\value`, "host"}},
+	} {
+		got, err := splitSSHCommandForPlatform(tc.command, tc.windows)
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%q Windows=%v: got %q, %v, want %q", tc.command, tc.windows, got, err, tc.want)
+		}
 	}
 }
 
