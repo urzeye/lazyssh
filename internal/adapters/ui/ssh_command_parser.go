@@ -212,7 +212,10 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 		}
 		return nil
 	}
-	if key == "proxycommand" && server.ProxyJump != "" {
+	// Keep an explicit disabled jump alongside ProxyCommand. Older clients
+	// ignore that command; newer clients allow it. Saving both preserves each
+	// client's behavior instead of imposing one version's proxy selection.
+	if key == "proxycommand" && server.ProxyJump != "" && !strings.EqualFold(server.ProxyJump, sessionTypeNone) {
 		return nil
 	}
 	if key == "port" {

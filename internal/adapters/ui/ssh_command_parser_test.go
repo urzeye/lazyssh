@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,7 +53,12 @@ func TestImportedProxyDirectiveOrder(t *testing.T) {
 		{`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`, "bastion", ""},
 		{`ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`, "", "nc %h %p"},
 		{`ssh -o ProxyCommand=none -o ProxyJump=bastion host`, "", "none"},
-		{`ssh -o ProxyJump=none -o ProxyCommand=netcat host`, "none", ""},
+		{`ssh -o ProxyJump=none -o ProxyCommand=netcat host`, "none", "netcat"},
+		{`ssh -o ProxyJump=NoNe -o ProxyCommand=netcat host`, "NoNe", "netcat"},
+		{`ssh -J none -o ProxyCommand=netcat host`, "none", "netcat"},
+		{`ssh -o ProxyJump=none -o ProxyCommand=first -o ProxyCommand=second host`, "none", "first"},
+		{`ssh -o ProxyJump=none -o ProxyCommand=netcat -o ProxyJump=bastion host`, "none", "netcat"},
+		{`ssh -o ProxyJump=none -o ProxyCommand=none -o ProxyCommand=netcat host`, "none", "none"},
 		{`ssh -o ProxyJump=none -o ProxyJump=bastion host`, "none", ""},
 	} {
 		server, err := ParseSSHCommand(tc.command)
@@ -66,6 +72,13 @@ func TestImportedProxyMatchesOpenSSH(t *testing.T) {
 	ssh, err := exec.LookPath("ssh")
 	if err != nil {
 		t.Skip("OpenSSH unavailable")
+	}
+	clients := []string{ssh}
+	if runtime.GOOS == windowsOS {
+		native := filepath.Join(os.Getenv("WINDIR"), "System32", "OpenSSH", "ssh.exe")
+		if _, err := os.Stat(native); err == nil && !strings.EqualFold(ssh, native) {
+			clients = append(clients, native)
+		}
 	}
 	summary := func(output []byte) string {
 		values := make(map[string]string)
@@ -83,37 +96,83 @@ func TestImportedProxyMatchesOpenSSH(t *testing.T) {
 		}
 		return "direct"
 	}
-	for _, command := range []string{`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`, `ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`, `ssh -o ProxyCommand=none -o ProxyJump=bastion host`, `ssh -o ProxyJump=none -o ProxyCommand=netcat host`, `ssh -o ProxyJump=none -o ProxyJump=bastion host`} {
-		dir := t.TempDir()
-		original := filepath.Join(dir, "original")
-		saved := filepath.Join(dir, "saved")
-		for _, path := range []string{original, saved} {
-			if err := os.WriteFile(path, nil, 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		tokens, err := splitSSHCommand(command)
-		if err != nil {
-			t.Fatal(err)
-		}
-		before, err := exec.Command(ssh, append([]string{"-G", "-F", original}, tokens[1:]...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("original config: %v\n%s", err, before)
-		}
-		server, err := ParseSSHCommand(command)
-		if err != nil {
-			t.Fatal(err)
-		}
-		repo := ssh_config_file.NewRepository(zap.NewNop().Sugar(), saved, filepath.Join(dir, "metadata.json"))
-		if err := repo.AddServer(server); err != nil {
-			t.Fatal(err)
-		}
-		after, err := exec.Command(ssh, "-G", "-F", saved, server.Alias).CombinedOutput()
-		if err != nil {
-			t.Fatalf("saved config: %v\n%s", err, after)
-		}
-		if summary(before) != summary(after) {
-			t.Fatalf("%s: proxy changed from %q to %q", command, summary(before), summary(after))
+	for _, client := range clients {
+		for _, command := range []string{
+			`ssh -o ProxyJump=bastion -o 'ProxyCommand=nc %h %p' host`,
+			`ssh -o 'ProxyCommand=nc %h %p' -o ProxyJump=bastion host`,
+			`ssh -o ProxyCommand=none -o ProxyJump=bastion host`,
+			`ssh -o ProxyJump=none -o ProxyCommand=netcat host`,
+			`ssh -o ProxyJump=NoNe -o ProxyCommand=netcat host`,
+			`ssh -J none -o ProxyCommand=netcat host`,
+			`ssh -o ProxyJump=none -o ProxyJump=bastion host`,
+			`ssh -o ProxyJump=none -o ProxyCommand=first -o ProxyCommand=second host`,
+			`ssh -o ProxyJump=none -o ProxyCommand=netcat -o ProxyJump=bastion host`,
+			`ssh -o ProxyJump=none -o ProxyCommand=none -o ProxyCommand=netcat host`,
+		} {
+			t.Run(client+"/"+command, func(t *testing.T) {
+				dir := t.TempDir()
+				original := filepath.Join(dir, "original")
+				saved := filepath.Join(dir, "saved")
+				for _, path := range []string{original, saved} {
+					if err := os.WriteFile(path, nil, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				tokens, err := splitSSHCommand(command)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, err := exec.Command(client, append([]string{"-G", "-F", original}, tokens[1:]...)...).CombinedOutput()
+				if err != nil {
+					t.Fatalf("original config: %v\n%s", err, before)
+				}
+				server, err := ParseSSHCommand(command)
+				if err != nil {
+					t.Fatal(err)
+				}
+				repo := ssh_config_file.NewRepository(zap.NewNop().Sugar(), saved, filepath.Join(dir, "metadata.json"))
+				if err := repo.AddServer(server); err != nil {
+					t.Fatal(err)
+				}
+				after, err := exec.Command(client, "-G", "-F", saved, server.Alias).CombinedOutput()
+				if err != nil {
+					t.Fatalf("saved config: %v\n%s", err, after)
+				}
+				if summary(before) != summary(after) {
+					t.Fatalf("%s: proxy changed from %q to %q", command, summary(before), summary(after))
+				}
+				servers, err := repo.ListServers("")
+				if err != nil || len(servers) != 1 {
+					t.Fatalf("reload saved host: %+v %v", servers, err)
+				}
+				copied := BuildSSHCommand(servers[0])
+				if strings.EqualFold(server.ProxyJump, "none") && !strings.Contains(copied, "-o ProxyJump="+server.ProxyJump) {
+					t.Fatalf("copy must preserve ProxyJump=none as a config option: %s", copied)
+				}
+				copiedArgs, err := splitSSHCommand(copied)
+				if err != nil {
+					t.Fatal(err)
+				}
+				copyOutput, err := exec.Command(client, append([]string{"-G", "-F", original}, copiedArgs[1:]...)...).CombinedOutput()
+				if err != nil || summary(before) != summary(copyOutput) {
+					t.Fatalf("copied command changed proxy from %q to %q: %v\n%s", summary(before), summary(copyOutput), err, copyOutput)
+				}
+				reimported, err := ParseSSHCommand(copied)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reimported.Alias = "reimported"
+				form := NewServerForm(ServerFormAdd, &reimported).SetVersionInfo("test", "test")
+				var saveErr error
+				form.OnSave(func(host domain.Server, _ *domain.Server) { saveErr = repo.AddServer(host) })
+				if !form.handleSave() || saveErr != nil {
+					t.Fatalf("save reimported form: %v", saveErr)
+				}
+				reimportOutput, err := exec.Command(client, "-G", "-F", saved, reimported.Alias).CombinedOutput()
+				if err != nil || summary(before) != summary(reimportOutput) {
+					t.Fatalf("reimport changed proxy from %q to %q: %v\n%s", summary(before), summary(reimportOutput), err, reimportOutput)
+				}
+			})
 		}
 	}
 }

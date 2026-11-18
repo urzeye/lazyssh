@@ -242,7 +242,10 @@ func addQuotedOption(parts *[]string, key, value string) {
 
 // addProxyOptions adds proxy-related options to the SSH command
 func addProxyOptions(parts *[]string, s domain.Server) {
-	if s.ProxyJump != "" {
+	if strings.EqualFold(s.ProxyJump, sessionTypeNone) {
+		// Preserve config semantics; -J also changes ProxyCommand on older clients.
+		addOption(parts, "ProxyJump", s.ProxyJump)
+	} else if s.ProxyJump != "" {
 		*parts = append(*parts, "-J", quoteIfNeeded(s.ProxyJump))
 	}
 	addQuotedOption(parts, "ProxyCommand", s.ProxyCommand)
