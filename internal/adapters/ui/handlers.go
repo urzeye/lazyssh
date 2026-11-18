@@ -357,8 +357,8 @@ func (t *tui) showAddServerForm(prefill *domain.Server) {
 	form := NewServerForm(ServerFormAdd, prefill).
 		SetApp(t.app).
 		SetVersionInfo(t.version, t.commit).
-		OnSave(t.handleServerSave).
 		OnCancel(t.handleFormCancel)
+	form.OnSave(func(server domain.Server, original *domain.Server) { t.handleServerSave(server, original, form) })
 	t.app.SetRoot(form, true)
 }
 
@@ -419,13 +419,13 @@ func (t *tui) handleServerEdit() {
 		form := NewServerForm(ServerFormEdit, &server).
 			SetApp(t.app).
 			SetVersionInfo(t.version, t.commit).
-			OnSave(t.handleServerSave).
 			OnCancel(t.handleFormCancel)
+		form.OnSave(func(updated domain.Server, original *domain.Server) { t.handleServerSave(updated, original, form) })
 		t.app.SetRoot(form, true)
 	}
 }
 
-func (t *tui) handleServerSave(server domain.Server, original *domain.Server) {
+func (t *tui) handleServerSave(server domain.Server, original *domain.Server, form *ServerForm) {
 	var err error
 	if original != nil {
 		// Edit mode
@@ -437,14 +437,15 @@ func (t *tui) handleServerSave(server domain.Server, original *domain.Server) {
 	if err != nil {
 		// Stay on form; show a small modal with the error
 		modal := tview.NewModal().
-			SetText(fmt.Sprintf("Save failed: %v", err)).
+			SetText(tview.Escape(fmt.Sprintf("Save failed: %v", err))).
 			AddButtons([]string{"Close"}).
-			SetDoneFunc(func(buttonIndex int, buttonLabel string) { t.handleModalClose() })
+			SetDoneFunc(func(_ int, _ string) { t.app.SetRoot(form, true) })
 		t.app.SetRoot(modal, true)
 		return
 	}
 
 	t.refreshServerList()
+	t.serverList.SelectServerByAlias(server.Alias)
 	t.handleFormCancel()
 }
 

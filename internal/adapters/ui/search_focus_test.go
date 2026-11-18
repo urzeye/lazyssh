@@ -1,3 +1,17 @@
+// Copyright 2025.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package ui
 
 import (
@@ -24,7 +38,10 @@ func TestSearchMouseFocusPreservesPrintableCommands(t *testing.T) {
 		t.Fatal("mouse did not focus search")
 	}
 	view := &tui{app: app, searchBar: search}
-	for _, r := range "qaedpstfgrjkcShT012/" {
+	if view.captureMainUIState().focus != focusSearch {
+		t.Fatal("mouse search focus lost during state capture")
+	}
+	for _, r := range "qaedpstfgrjkcShTCvPF012/" {
 		event := tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)
 		if got := view.handleGlobalKeys(event); got != event {
 			t.Fatalf("search rune %q consumed by global handler", r)
