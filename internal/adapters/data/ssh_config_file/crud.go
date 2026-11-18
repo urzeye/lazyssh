@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kevinburke/ssh_config"
@@ -30,6 +31,18 @@ const (
 	BackupSuffix   = "lazyssh.backup"
 	SSHConfigPerms = 0o600
 )
+
+func insertHost(hosts []*ssh_config.Host, host *ssh_config.Host, alias string) []*ssh_config.Host {
+	for i, existing := range hosts {
+		if existing.Implicit || !existing.Matches(alias) {
+			continue
+		}
+		// OpenSSH takes the first value, so specific hosts must precede defaults.
+		host.Nodes = append(host.Nodes, &ssh_config.Empty{})
+		return slices.Insert(hosts, i, host)
+	}
+	return append(hosts, host)
+}
 
 // filterServers filters servers based on the query string.
 func (r *Repository) filterServers(servers []domain.Server, query string) []domain.Server {
