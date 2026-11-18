@@ -29,6 +29,7 @@ type ServerService interface {
 	SetPinned(alias string, pinned bool) error
 	UpdateTags(server domain.Server, tags []string) error
 	SSH(alias string) error
+	SFTP(alias string) error
 	SSHWithArgs(alias string, extraArgs []string) error
 	StartForward(alias string, extraArgs []string) (int, error)
 	StopForwarding(alias string) error

@@ -71,6 +71,9 @@ func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	case 'P':
 		t.handleSCP()
 		return nil
+	case 'F':
+		t.handleSFTP()
+		return nil
 	case 'e':
 		t.handleServerEdit()
 		return nil
@@ -299,13 +302,24 @@ func (t *tui) handleServerConnect() {
 }
 
 func (t *tui) runSSHSession(alias string, extraArgs []string) {
+	t.runInteractiveSession("SSH to "+alias, func() error {
+		if len(extraArgs) == 0 {
+			return t.serverService.SSH(alias)
+		}
+		return t.serverService.SSHWithArgs(alias, extraArgs)
+	})
+}
+
+func (t *tui) handleSFTP() {
+	if server, ok := t.serverList.GetSelectedServer(); ok {
+		t.runInteractiveSession("SFTP to "+server.Alias, func() error { return t.serverService.SFTP(server.Alias) })
+	}
+}
+
+func (t *tui) runInteractiveSession(label string, run func() error) {
 	var sshErr error
 	if !t.app.Suspend(func() {
-		if len(extraArgs) == 0 {
-			sshErr = t.serverService.SSH(alias)
-		} else {
-			sshErr = t.serverService.SSHWithArgs(alias, extraArgs)
-		}
+		sshErr = run()
 	}) {
 		sshErr = fmt.Errorf("could not suspend the terminal for SSH")
 	}
@@ -318,7 +332,7 @@ func (t *tui) runSSHSession(alias string, extraArgs []string) {
 	t.returnToMain()
 	if sshErr != nil {
 		modal := tview.NewModal().
-			SetText(tview.Escape(fmt.Sprintf("SSH to %s failed:\n\n%v", alias, sshErr))).
+			SetText(tview.Escape(fmt.Sprintf("%s failed:\n\n%v", label, sshErr))).
 			AddButtons([]string{"Close"}).
 			SetDoneFunc(func(_ int, _ string) { t.returnToMain() })
 		t.app.SetRoot(modal, true)

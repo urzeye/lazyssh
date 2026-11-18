@@ -38,6 +38,7 @@ type serverService struct {
 	serverRepository ports.ServerRepository
 	logger           *zap.SugaredLogger
 	sshCommand       func(args ...string) *exec.Cmd
+	sftpCommand      func(args ...string) *exec.Cmd
 
 	fwMu     sync.Mutex
 	forwards map[string][]*os.Process
@@ -51,6 +52,10 @@ func NewServerService(logger *zap.SugaredLogger, sr ports.ServerRepository) port
 		sshCommand: func(args ...string) *exec.Cmd {
 			// #nosec G204 -- arguments are passed directly to the system OpenSSH client.
 			return exec.Command("ssh", args...)
+		},
+		sftpCommand: func(args ...string) *exec.Cmd {
+			// #nosec G204 -- arguments are passed directly to the system SFTP client.
+			return exec.Command("sftp", args...)
 		},
 	}
 }
@@ -337,6 +342,11 @@ func (s *serverService) SSH(alias string) error {
 
 	s.logger.Infow("ssh end", "alias", alias)
 	return nil
+}
+
+// SSHWithArgs runs system ssh with provided extra args (e.g., -L/-R/-D) for the given alias.
+func (s *serverService) SFTP(alias string) error {
+	return runInteractiveSSH(s.sftpCommand("-F", s.serverRepository.GetConfigFile(), alias))
 }
 
 // SSHWithArgs runs system ssh with provided extra args (e.g., -L/-R/-D) for the given alias.
