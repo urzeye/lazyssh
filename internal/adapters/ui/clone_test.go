@@ -38,6 +38,9 @@ func TestPrefilledAddFormCreatesNewServer(t *testing.T) {
 	called := false
 	form.OnSave(func(server domain.Server, original *domain.Server) {
 		called = true
+		if server.IPQoS != seed.IPQoS || server.CheckHostIP != seed.CheckHostIP || server.FingerprintHash != seed.FingerprintHash || server.GatewayPorts != seed.GatewayPorts || server.CanonicalDomains != seed.CanonicalDomains {
+			t.Fatalf("saved clone lost fields: %+v", server)
+		}
 		if original != nil {
 			t.Fatal("clone treated as update")
 		}
