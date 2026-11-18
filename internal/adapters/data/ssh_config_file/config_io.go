@@ -16,8 +16,10 @@ package ssh_config_file
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kevinburke/ssh_config"
@@ -43,11 +45,29 @@ func (r *Repository) loadConfigAt(path string) (*ssh_config.Config, error) {
 		}
 	}()
 
-	cfg, err := ssh_config.Decode(file)
+	cfg, err := decodeConfig(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode config: %w", err)
 	}
 
+	return cfg, nil
+}
+
+func decodeConfig(reader io.Reader) (*ssh_config.Config, error) {
+	cfg, err := ssh_config.Decode(reader)
+	if err != nil {
+		return nil, err
+	}
+	// The parser retains negation in its matcher but drops it from Pattern.Str.
+	// Restore the spelling for listing and serialization without changing matching.
+	for _, host := range cfg.Hosts {
+		for _, pattern := range host.Patterns {
+			single := &ssh_config.Host{Patterns: []*ssh_config.Pattern{pattern}}
+			if !strings.HasPrefix(pattern.Str, "!") && !single.Matches(pattern.Str) {
+				pattern.Str = "!" + pattern.Str
+			}
+		}
+	}
 	return cfg, nil
 }
 

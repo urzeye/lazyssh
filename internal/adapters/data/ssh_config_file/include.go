@@ -204,7 +204,7 @@ func (r *Repository) decodeConfigAt(path string) (*ssh_config.Config, error) {
 		_ = file.Close()
 	}()
 
-	return ssh_config.Decode(file)
+	return decodeConfig(file)
 }
 
 func normalizeConfigPath(path string) string {
