@@ -34,5 +34,6 @@ type ServerService interface {
 	StopForwarding(alias string) error
 	IsForwarding(alias string) bool
 	IsReadOnly() bool
+	GetConfigFile() string
 	Ping(server domain.Server) (bool, time.Duration, error)
 }

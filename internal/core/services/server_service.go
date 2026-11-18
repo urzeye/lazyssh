@@ -477,6 +477,10 @@ func (s *serverService) IsReadOnly() bool {
 	return s.serverRepository.IsReadOnly()
 }
 
+func (s *serverService) GetConfigFile() string {
+	return s.serverRepository.GetConfigFile()
+}
+
 // Ping checks if the server is reachable on its SSH port.
 func (s *serverService) Ping(server domain.Server) (bool, time.Duration, error) {
 	start := time.Now()

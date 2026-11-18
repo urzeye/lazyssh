@@ -35,6 +35,7 @@ func DefaultStatusText() string {
 		keyText("a") + " Add",
 		keyText("C") + " Clone",
 		keyText("v") + " Paste SSH",
+		keyText("P") + " SCP",
 		keyText("e") + " Edit",
 		keyText("g") + " Ping",
 		keyText("d") + " Delete",

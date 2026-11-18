@@ -68,6 +68,9 @@ func (t *tui) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	case 'v':
 		t.handlePasteSSH()
 		return nil
+	case 'P':
+		t.handleSCP()
+		return nil
 	case 'e':
 		t.handleServerEdit()
 		return nil
