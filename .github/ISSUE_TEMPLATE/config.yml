@@ -5,6 +5,6 @@ issue_templates:
   - feature_request.yml
 
 contact_links:
-  - name: Maintainer Contact
-    url: https://www.linkedin.com/in/adembc
-    about: Reach out to the maintainer on LinkedIn for help.
+  - name: GitHub Issues
+    url: https://github.com/urzeye/lazyssh/issues
+    about: Report bugs or request features for this maintained fork.
