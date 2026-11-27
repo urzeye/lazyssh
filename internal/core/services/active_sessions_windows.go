@@ -47,7 +47,7 @@ func listProcesses() ([]processInfo, error) {
 		commandLine = strings.TrimSpace(commandLine)
 		processes = append(processes, processInfo{
 			PID:     pid,
-			Args:    splitCommandLine(commandLine),
+			Args:    splitWindowsCommandLine(commandLine),
 			Command: commandLine,
 		})
 	}

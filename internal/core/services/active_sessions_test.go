@@ -77,6 +77,32 @@ func TestParseSSHProcessLine(t *testing.T) {
 			wantAlias: "2001:db8::1",
 			wantDest:  "user@2001:db8::1",
 		},
+		{
+			name:        "combined short flags with local forward",
+			line:        "12353 ssh -NfL 8080:localhost:80 prod",
+			wantAlias:   "prod",
+			wantDest:    "prod",
+			wantForward: []string{"8080:localhost:80"},
+		},
+		{
+			name:        "combined short flags with attached dynamic forward",
+			line:        "12354 ssh -fND1080 prod",
+			wantAlias:   "prod",
+			wantDest:    "prod",
+			wantForward: []string{"1080"},
+		},
+		{
+			name:      "combined short flags with port option",
+			line:      "12355 ssh -4p 2222 prod",
+			wantAlias: "prod",
+			wantDest:  "prod",
+		},
+		{
+			name:      "ssh uri without user",
+			line:      "12356 ssh ssh://example.com:2222",
+			wantAlias: "example.com",
+			wantDest:  "ssh://example.com:2222",
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,11 +150,29 @@ func TestParseSSHProcessLineRejectsNonSessions(t *testing.T) {
 		"12345 ssh-agent",
 		"12346 scp file prod:/tmp",
 		"12347 ssh",
+		"12348 ssh -G prod",
+		"12349 ssh -V",
 	}
 
 	for _, line := range tests {
 		if got, ok := parseSSHProcessLine(line); ok {
 			t.Fatalf("parseSSHProcessLine(%q) = %#v, true; want false", line, got)
 		}
+	}
+}
+
+func TestParseWindowsSSHCommandLine(t *testing.T) {
+	cmdLine := `"C:\Windows\System32\OpenSSH\ssh.exe" -F "C:\Users\Alice Smith\.ssh\config" -L 8080:localhost:80 prod`
+	args := splitWindowsCommandLine(cmdLine)
+	session, ok := parseSSHProcess(processInfo{
+		PID:     4242,
+		Args:    args,
+		Command: cmdLine,
+	})
+	if !ok {
+		t.Fatalf("parseSSHProcess() ok = false for Windows ssh.exe; args=%q", args)
+	}
+	if session.Alias != "prod" || session.Destination != "prod" || !slices.Equal(session.Forwards, []string{"8080:localhost:80"}) {
+		t.Fatalf("unexpected Windows session: %+v", session)
 	}
 }

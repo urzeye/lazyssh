@@ -51,9 +51,10 @@ func newRootCommand(log *zap.SugaredLogger, home string) *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   ui.AppName + " [filter]",
-		Short: "Lazy SSH server picker TUI",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     ui.AppName + " [filter]",
+		Short:   "Lazy SSH server picker TUI",
+		Version: formatVersion(version, gitCommit),
+		Args:    cobra.MaximumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if cmd.Flags().Changed("filter") {
@@ -140,7 +141,10 @@ func run() int {
 		return 1
 	}
 	if err := newRootCommand(log, home).Execute(); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
+		var alreadyReported interface{ StderrAlreadyPrinted() bool }
+		if !errors.As(err, &alreadyReported) || !alreadyReported.StderrAlreadyPrinted() {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
 			return exitErr.ExitCode()
@@ -148,6 +152,17 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+func formatVersion(ver, commit string) string {
+	commit = strings.TrimSpace(commit)
+	if commit == "" || commit == "unknown" || commit == "(devel)" {
+		return ver
+	}
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+	return fmt.Sprintf("%s (%s)", ver, commit)
 }
 
 func absoluteConfigPath(configPath, home string) (string, error) {

@@ -29,7 +29,7 @@ func listProcesses() ([]processInfo, error) {
 	}
 
 	// #nosec G204 -- currentUser.Username comes from the local OS account and scopes ps to this user.
-	out, err := exec.Command("ps", "-U", currentUser.Username, "-o", "pid=,command=").Output()
+	out, err := exec.Command("ps", "-ww", "-U", currentUser.Username, "-o", "pid=,command=").Output()
 	if err != nil {
 		return nil, err
 	}

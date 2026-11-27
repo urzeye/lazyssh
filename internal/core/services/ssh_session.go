@@ -20,14 +20,20 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
 const maxSSHDiagnostics = 16 * 1024
 
-type diagnosticTail struct{ data []byte }
+type diagnosticTail struct {
+	mu   sync.Mutex
+	data []byte
+}
 
 func (b *diagnosticTail) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	n := len(p)
 	if n >= maxSSHDiagnostics {
 		b.data = append(b.data[:0], p[n-maxSSHDiagnostics:]...)
@@ -41,6 +47,32 @@ func (b *diagnosticTail) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+func (b *diagnosticTail) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return strings.TrimSpace(string(b.data))
+}
+
+type interactiveCommandError struct {
+	err         error
+	diagnostics string
+}
+
+func (e *interactiveCommandError) Error() string {
+	if e.diagnostics != "" {
+		return fmt.Sprintf("%v\n%s", e.err, e.diagnostics)
+	}
+	return e.err.Error()
+}
+
+func (e *interactiveCommandError) Unwrap() error {
+	return e.err
+}
+
+func (e *interactiveCommandError) StderrAlreadyPrinted() bool {
+	return e.diagnostics != ""
+}
+
 func runInteractiveSSH(cmd *exec.Cmd) error {
 	var diagnostics diagnosticTail
 	// Proxy children can inherit stderr and outlive ssh. Do not wait forever
@@ -52,9 +84,9 @@ func runInteractiveSSH(cmd *exec.Cmd) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = io.MultiWriter(os.Stderr, &diagnostics)
 	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(string(diagnostics.data))
+		message := diagnostics.String()
 		if message != "" {
-			return fmt.Errorf("%w\n%s", err, message)
+			return &interactiveCommandError{err: err, diagnostics: message}
 		}
 		return err
 	}
