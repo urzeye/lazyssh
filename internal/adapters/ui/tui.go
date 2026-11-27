@@ -17,6 +17,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -63,6 +64,8 @@ type tui struct {
 	searchVisible bool
 
 	activeSessionsRefreshStop chan struct{}
+	refreshInProgress         atomic.Bool
+	statusSeq                 atomic.Uint64
 }
 
 type mainUIState struct {
@@ -198,6 +201,7 @@ func (t *tui) bindEvents() {
 
 func (t *tui) loadInitialData() {
 	if t.options.InitialFilter != "" {
+		t.updateListTitle()
 		t.showSearchBar()
 		t.searchBar.SetText(t.options.InitialFilter)
 	} else {
@@ -207,7 +211,15 @@ func (t *tui) loadInitialData() {
 }
 
 func (t *tui) loadServerList(query string) {
-	servers, _ := t.serverService.ListServers(query)
+	servers, err := t.serverService.ListServers(query)
+	if err != nil {
+		if t.logger != nil {
+			t.logger.Errorw("failed to load servers", "query", query, "error", err)
+		}
+		t.updateListTitle()
+		t.showStatusTempColor("Failed to load SSH config: "+err.Error(), CurrentTheme.Error)
+		return
+	}
 	if strings.TrimSpace(query) == "" {
 		sortServersForUI(servers, t.sortMode)
 	}

@@ -460,8 +460,8 @@ var fieldHelpData = map[string]FieldHelp{
 	"CanonicalDomains": {
 		Field:       "CanonicalDomains",
 		Description: "Search domains for hostname canonicalization. SSH will try appending these domains.",
-		Syntax:      "domain1[,domain2,...]  ",
-		Examples:    []string{"example.com", "internal.net,example.org"},
+		Syntax:      "domain1 [domain2 ...]",
+		Examples:    []string{"example.com", "internal.net example.org"},
 		Default:     "none",
 		Since:       "OpenSSH 6.5+",
 		Category:    "Connection",

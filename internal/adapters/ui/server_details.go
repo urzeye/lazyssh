@@ -51,7 +51,7 @@ func renderTagChips(tags []string) string {
 	}
 	chips := make([]string, 0, len(tags))
 	for _, t := range tags {
-		chips = append(chips, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, t))
+		chips = append(chips, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, tview.Escape(t)))
 	}
 	return strings.Join(chips, " ")
 }
@@ -67,7 +67,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	}
 	editableText := sshYes
 	if server.Readonly {
-		editableText = "no (included config)"
+		editableText = "no (read-only)"
 	}
 	serverKey := strings.Join(server.IdentityFiles, ", ")
 
@@ -79,6 +79,9 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 
 	// Basic information
 	aliasText := strings.Join(server.Aliases, ", ")
+	if aliasText == "" {
+		aliasText = server.Alias
+	}
 
 	userText := server.User
 
@@ -103,13 +106,13 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 			"  Pinned: [%s]%s[-]\n"+
 			"  Last SSH: %s\n"+
 			"  SSH Count: [%s]%d[-]\n",
-		aliasText,
-		valueColor, hostText,
-		valueColor, userText,
-		valueColor, portText,
-		valueColor, serverKey,
-		valueColor, sourceText,
-		valueColor, editableText,
+		tview.Escape(aliasText),
+		valueColor, tview.Escape(hostText),
+		valueColor, tview.Escape(userText),
+		valueColor, tview.Escape(portText),
+		valueColor, tview.Escape(serverKey),
+		valueColor, tview.Escape(sourceText),
+		valueColor, tview.Escape(editableText),
 		tagsText,
 		valueColor, pinnedStr,
 		lastSeen,
@@ -231,7 +234,7 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 		for _, field := range group.fields {
 			if field.value != "" {
 				hasAdvanced = true
-				advancedText += fmt.Sprintf("  %s: [%s]%s[-]\n", field.name, valueColor, field.value)
+				advancedText += fmt.Sprintf("  %s: [%s]%s[-]\n", field.name, valueColor, tview.Escape(field.value))
 			}
 		}
 	}
@@ -243,6 +246,8 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 	// Commands list
 	commands := []string{
 		"Enter: SSH connect",
+		"F: Open SFTP",
+		"P: SCP command helper",
 		"f: Port forward",
 		"x: Stop forwarding",
 		"c: Copy SSH command",
@@ -250,10 +255,12 @@ func (sd *ServerDetails) UpdateServer(server domain.Server) {
 		"g: Ping server",
 		"r: Refresh list",
 		"a: Add new server",
+		"C: Clone server",
+		"v: Paste SSH command",
 		"p: Pin/Unpin",
 	}
 	if server.Readonly {
-		commands = append(commands, "Read-only entries are managed in another file")
+		commands = append(commands, "Read-only entry (edits disabled)")
 	} else {
 		commands = append(commands, "e: Edit entry", "t: Edit tags", "d: Delete entry")
 	}

@@ -136,7 +136,10 @@ func (t *tui) handleQuit() {
 func (t *tui) handleServerPin() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
 		pinned := server.PinnedAt.IsZero()
-		_ = t.serverService.SetPinned(server.Alias, pinned)
+		if err := t.serverService.SetPinned(server.Alias, pinned); err != nil {
+			t.showStatusTempColor("Failed to update pin: "+err.Error(), CurrentTheme.Error)
+			return
+		}
 		t.refreshServerList()
 	}
 }
@@ -177,7 +180,10 @@ func (t *tui) handleCopyCommand() {
 
 func (t *tui) handleCopyHost() {
 	if server, ok := t.serverList.GetSelectedServer(); ok {
-		host := server.Host
+		host := strings.TrimSpace(server.Host)
+		if host == "" {
+			host = server.Alias
+		}
 		if err := clipboard.WriteAll(host); err == nil {
 			t.showStatusTemp("Copied: " + host)
 		} else {
@@ -198,29 +204,55 @@ func (t *tui) handleTagsEdit() {
 
 func (t *tui) handleNavigateDown() {
 	if t.isServerListFocused() {
-		currentIdx := t.serverList.GetCurrentItem()
 		itemCount := t.serverList.GetItemCount()
+		if itemCount == 0 {
+			return
+		}
+		currentIdx := t.serverList.GetCurrentItem()
 		if currentIdx < itemCount-1 {
 			t.serverList.SetCurrentItem(currentIdx + 1)
 		} else {
 			t.serverList.SetCurrentItem(0)
 		}
+		return
+	}
+	if t.app != nil && t.details != nil && t.app.GetFocus() == t.details {
+		row, col := t.details.GetScrollOffset()
+		t.details.ScrollTo(row+1, col)
 	}
 }
 
 func (t *tui) handleNavigateUp() {
 	if t.isServerListFocused() {
+		itemCount := t.serverList.GetItemCount()
+		if itemCount == 0 {
+			return
+		}
 		currentIdx := t.serverList.GetCurrentItem()
 		if currentIdx > 0 {
 			t.serverList.SetCurrentItem(currentIdx - 1)
 		} else {
-			t.serverList.SetCurrentItem(t.serverList.GetItemCount() - 1)
+			t.serverList.SetCurrentItem(itemCount - 1)
+		}
+		return
+	}
+	if t.app != nil && t.details != nil && t.app.GetFocus() == t.details {
+		row, col := t.details.GetScrollOffset()
+		if row > 0 {
+			t.details.ScrollTo(row-1, col)
 		}
 	}
 }
 
 func (t *tui) handleSearchInput(query string) {
-	filtered, _ := t.serverService.ListServers(query)
+	filtered, err := t.serverService.ListServers(query)
+	if err != nil {
+		if t.logger != nil {
+			t.logger.Errorw("failed to filter servers", "query", query, "error", err)
+		}
+		t.showStatusTempColor("Search failed: "+err.Error(), CurrentTheme.Error)
+		return
+	}
 	if strings.TrimSpace(query) == "" {
 		sortServersForUI(filtered, t.sortMode)
 	}
@@ -492,16 +524,25 @@ func (t *tui) handleModalClose() {
 // handleRefreshBackground refreshes the server list in the background without leaving the current screen.
 // It preserves the current search query and selection, shows transient status, and avoids concurrent runs.
 func (t *tui) handleRefreshBackground() {
-	currentIdx := t.serverList.GetCurrentItem()
+	if !t.refreshInProgress.CompareAndSwap(false, true) {
+		return
+	}
+
 	query := ""
 	if t.searchBar != nil {
 		query = t.searchBar.InputField.GetText()
 	}
+	sortMode := t.sortMode
 
 	t.showStatusTemp("Refreshing…")
 
-	go func(prevIdx int, q string) {
+	go func(q string, mode SortMode) {
+		defer t.refreshInProgress.Store(false)
+
 		servers, err := t.serverService.ListServers(q)
+		if t.app == nil {
+			return
+		}
 		if err != nil {
 			t.app.QueueUpdateDraw(func() {
 				t.showStatusTempColor(fmt.Sprintf("Refresh failed: %v", err), CurrentTheme.Error)
@@ -510,19 +551,26 @@ func (t *tui) handleRefreshBackground() {
 		}
 		sessions, sessionsErr := t.serverService.ListActiveSessions()
 		if strings.TrimSpace(q) == "" {
-			sortServersForUI(servers, t.sortMode)
+			sortServersForUI(servers, mode)
 		}
 		t.app.QueueUpdateDraw(func() {
-			t.serverList.UpdateServers(servers)
+			currentQuery := ""
+			if t.searchBar != nil {
+				currentQuery = t.searchBar.InputField.GetText()
+			}
+			// Re-sort if the user changed sort mode while refresh was running,
+			// and avoid overwriting results for a newer search query.
+			if currentQuery == q {
+				if strings.TrimSpace(q) == "" && t.sortMode != mode {
+					sortServersForUI(servers, t.sortMode)
+				}
+				t.serverList.UpdateServers(servers)
+				if len(servers) == 0 {
+					t.details.ShowEmpty()
+				}
+			}
 			if sessionsErr == nil && t.sessions != nil {
 				t.sessions.SetSessions(sessions)
-			}
-			// Try to restore selection if still valid
-			if prevIdx >= 0 && prevIdx < t.serverList.List.GetItemCount() {
-				t.serverList.SetCurrentItem(prevIdx)
-				if srv, ok := t.serverList.GetSelectedServer(); ok {
-					t.details.UpdateServer(srv)
-				}
 			}
 			if sessionsErr != nil {
 				t.showStatusTempColor(fmt.Sprintf("Refreshed %d servers; active sessions failed", len(servers)), CurrentTheme.Warning)
@@ -530,7 +578,7 @@ func (t *tui) handleRefreshBackground() {
 			}
 			t.showStatusTemp(fmt.Sprintf("Refreshed %d servers, %d active sessions", len(servers), len(sessions)))
 		})
-	}(currentIdx, query)
+	}(query, sortMode)
 }
 
 // =============================================================================
@@ -538,16 +586,25 @@ func (t *tui) handleRefreshBackground() {
 // =============================================================================
 
 func (t *tui) showDeleteConfirmModal(server domain.Server) {
-	msg := fmt.Sprintf("Delete server %s (%s@%s:%d)?\n\nThis action cannot be undone.",
-		server.Alias, server.User, server.Host, server.Port)
+	msg := tview.Escape(fmt.Sprintf("Delete server %s (%s@%s:%d)?\n\nThis action cannot be undone.",
+		server.Alias, server.User, server.Host, server.Port))
+
+	confirmDelete := func() {
+		if err := t.serverService.DeleteServer(server); err != nil {
+			t.showActionError("Delete server", err)
+			return
+		}
+		t.refreshServerList()
+		t.handleModalClose()
+	}
 
 	modal := tview.NewModal().
 		SetText(msg).
 		AddButtons([]string{"[yellow]C[-]ancel", "[yellow]D[-]elete"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			if buttonIndex == 1 {
-				_ = t.serverService.DeleteServer(server)
-				t.refreshServerList()
+				confirmDelete()
+				return
 			}
 			t.handleModalClose()
 		})
@@ -561,9 +618,7 @@ func (t *tui) showDeleteConfirmModal(server domain.Server) {
 			return nil
 		case 'd', 'D':
 			// Delete
-			_ = t.serverService.DeleteServer(server)
-			t.refreshServerList()
-			t.handleModalClose()
+			confirmDelete()
 			return nil
 		}
 		// ESC key already handled by default modal behavior
@@ -678,14 +733,29 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 		hostPortField.SetText("").SetDisabled(true)
 	}
 
+	showFormError := func(msg string) {
+		modal := tview.NewModal().
+			SetText(tview.Escape(msg)).
+			AddButtons([]string{"Close"}).
+			SetDoneFunc(func(_ int, _ string) {
+				t.app.SetRoot(form, true)
+				t.app.SetFocus(form)
+			})
+		t.app.SetRoot(modal, true)
+	}
+
 	form.AddButton("Start", func() {
+		if strings.TrimSpace(portVal) == "" {
+			showFormError("Port is required")
+			return
+		}
 		if err := validatePort(portVal); err != nil {
-			t.showStatusTempColor("Invalid port: "+err.Error(), CurrentTheme.Error)
+			showFormError("Invalid port: " + err.Error())
 			return
 		}
 		if bindAddrVal != "" {
 			if err := validateBindAddress(bindAddrVal); err != nil {
-				t.showStatusTempColor("Invalid bind address: "+err.Error(), CurrentTheme.Error)
+				showFormError("Invalid bind address: " + err.Error())
 				return
 			}
 		}
@@ -695,21 +765,25 @@ func (t *tui) showPortForwardForm(server domain.Server) {
 		if ft == ForwardTypeDynamic {
 			spec := portVal
 			if bindAddrVal != "" {
-				spec = bindAddrVal + ":" + portVal
+				spec = formatForwardAddrPort(bindAddrVal, portVal)
 			}
 			args = append(args, "-D", spec)
 		} else {
 			if err := validateHost(hostVal); err != nil {
-				t.showStatusTempColor("Invalid host: "+err.Error(), CurrentTheme.Error)
+				showFormError("Invalid host: " + err.Error())
+				return
+			}
+			if strings.TrimSpace(hostPortVal) == "" {
+				showFormError("Host Port is required")
 				return
 			}
 			if err := validatePort(hostPortVal); err != nil {
-				t.showStatusTempColor("Invalid host port: "+err.Error(), CurrentTheme.Error)
+				showFormError("Invalid host port: " + err.Error())
 				return
 			}
-			spec := portVal + ":" + hostVal + ":" + hostPortVal
+			spec := portVal + ":" + formatForwardAddrPort(hostVal, hostPortVal)
 			if bindAddrVal != "" {
-				spec = bindAddrVal + ":" + spec
+				spec = formatForwardBindPrefix(bindAddrVal) + ":" + spec
 			}
 			if ft == ForwardTypeLocal {
 				args = append(args, "-L", spec)
@@ -792,16 +866,40 @@ func (t *tui) hideSearchBar() {
 // Internal Operations (perform actual work)
 // =============================================================================
 
+func formatForwardAddrPort(addr, port string) string {
+	if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+		return "[" + addr + "]:" + port
+	}
+	return addr + ":" + port
+}
+
+func formatForwardBindPrefix(addr string) string {
+	if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+		return "[" + addr + "]"
+	}
+	return addr
+}
+
 func (t *tui) refreshServerList() {
 	query := ""
 	if t.searchBar != nil {
 		query = t.searchBar.InputField.GetText()
 	}
-	filtered, _ := t.serverService.ListServers(query)
+	filtered, err := t.serverService.ListServers(query)
+	if err != nil {
+		if t.logger != nil {
+			t.logger.Errorw("failed to refresh server list", "query", query, "error", err)
+		}
+		t.showStatusTempColor("Failed to refresh servers: "+err.Error(), CurrentTheme.Error)
+		return
+	}
 	if strings.TrimSpace(query) == "" {
 		sortServersForUI(filtered, t.sortMode)
 	}
 	t.serverList.UpdateServers(filtered)
+	if len(filtered) == 0 && t.details != nil {
+		t.details.ShowEmpty()
+	}
 	t.loadActiveSessions()
 }
 
@@ -822,11 +920,12 @@ func (t *tui) showStatusTempColor(msg string, color string) {
 	if t.statusBar == nil {
 		return
 	}
-	t.statusBar.SetText("[" + color + "]" + msg + "[-]")
+	seq := t.statusSeq.Add(1)
+	t.statusBar.SetText("[" + color + "]" + tview.Escape(msg) + "[-]")
 	time.AfterFunc(2*time.Second, func() {
 		if t.app != nil {
 			t.app.QueueUpdateDraw(func() {
-				if t.statusBar != nil {
+				if t.statusBar != nil && t.statusSeq.Load() == seq {
 					t.statusBar.SetText(DefaultStatusText())
 				}
 			})

@@ -129,14 +129,30 @@ const invalidHostChars = "@#$%^&*()=+[]{}|\\;:'\"<>,?/"
 // invalidAddressChars contains characters that are not allowed in bind addresses
 const invalidAddressChars = "@#$%^&()=+{}|\\;:'\"<>,?/"
 
+var (
+	aliasFieldPattern     = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	hostnameFieldPattern  = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+	portFieldPattern      = regexp.MustCompile(`^([1-9]\d{0,4})$`)
+	userFieldPattern      = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9.@:_-]*$`)
+	positiveIntPattern    = regexp.MustCompile(`^[1-9]\d*$`)
+	nonNegativeIntPattern = regexp.MustCompile(`^\d+$`)
+	tviewColorTagRegex    = regexp.MustCompile(`\[[^\]]*\]`)
+	cachedFieldValidators = buildFieldValidators()
+)
+
 // GetFieldValidators returns validation rules for SSH configuration fields
 func GetFieldValidators() map[string]fieldValidator {
+	return cachedFieldValidators
+}
+
+func buildFieldValidators() map[string]fieldValidator {
 	validators := make(map[string]fieldValidator)
 
 	// Basic fields
 	validators["Alias"] = fieldValidator{
 		Required: true,
-		Pattern:  regexp.MustCompile(`^[a-zA-Z0-9._-]+$`),
+		Pattern:  aliasFieldPattern,
+		Validate: validateAlias,
 		Message:  "Alias is required and can only contain letters, numbers, dots, hyphens, and underscores",
 	}
 	validators["Host"] = fieldValidator{
@@ -145,12 +161,12 @@ func GetFieldValidators() map[string]fieldValidator {
 		Message:  "Host is required and must be a valid hostname or IP address",
 	}
 	validators["Port"] = fieldValidator{
-		Pattern:  regexp.MustCompile(`^([1-9]\d{0,4})$`),
+		Pattern:  portFieldPattern,
 		Validate: validatePort,
 		Message:  "Port must be between 1 and 65535",
 	}
 	validators["User"] = fieldValidator{
-		Pattern: regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9.@:_-]*$`),
+		Pattern: userFieldPattern,
 		Message: "User must start with a letter, digit, or underscore and contain only letters, numbers, dots, hyphens, at, colon, and underscores",
 	}
 	validators["Keys"] = fieldValidator{
@@ -164,16 +180,16 @@ func GetFieldValidators() map[string]fieldValidator {
 		Message:  "ConnectTimeout must be a positive number or 'none'",
 	}
 	validators["ConnectionAttempts"] = fieldValidator{
-		Pattern: regexp.MustCompile(`^[1-9]\d*$`),
+		Pattern: positiveIntPattern,
 		Message: "ConnectionAttempts must be a positive number",
 	}
 	validators["ServerAliveInterval"] = fieldValidator{
-		Pattern:  regexp.MustCompile(`^\d+$`),
+		Pattern:  nonNegativeIntPattern,
 		Validate: validateNonNegativeNumber,
 		Message:  "ServerAliveInterval must be a non-negative number",
 	}
 	validators["ServerAliveCountMax"] = fieldValidator{
-		Pattern:  regexp.MustCompile(`^\d+$`),
+		Pattern:  nonNegativeIntPattern,
 		Validate: validateNonNegativeNumber,
 		Message:  "ServerAliveCountMax must be a non-negative number",
 	}
@@ -202,14 +218,14 @@ func GetFieldValidators() map[string]fieldValidator {
 
 	// Authentication fields
 	validators["NumberOfPasswordPrompts"] = fieldValidator{
-		Pattern:  regexp.MustCompile(`^\d+$`),
+		Pattern:  nonNegativeIntPattern,
 		Validate: validatePasswordPrompts,
 		Message:  "NumberOfPasswordPrompts must be between 0 and 10",
 	}
 
 	// Advanced fields
 	validators["CanonicalizeMaxDots"] = fieldValidator{
-		Pattern:  regexp.MustCompile(`^\d+$`),
+		Pattern:  nonNegativeIntPattern,
 		Validate: validateNonNegativeNumber,
 		Message:  "CanonicalizeMaxDots must be a non-negative number",
 	}
@@ -225,6 +241,13 @@ func GetFieldValidators() map[string]fieldValidator {
 	}
 
 	return validators
+}
+
+func validateAlias(value string) error {
+	if strings.HasPrefix(value, "-") {
+		return fmt.Errorf("alias cannot start with a hyphen")
+	}
+	return nil
 }
 
 // validatePort validates port number
@@ -327,9 +350,13 @@ func validateIPQoS(value string) error {
 		return fmt.Errorf("IPQoS accepts at most 2 values")
 	}
 	for _, part := range parts {
-		if !validValues[strings.ToLower(part)] {
-			return fmt.Errorf("invalid IPQoS value: %s", part)
+		if validValues[strings.ToLower(part)] {
+			continue
 		}
+		if _, err := strconv.ParseUint(part, 0, 8); err == nil {
+			continue
+		}
+		return fmt.Errorf("invalid IPQoS value: %s", part)
 	}
 	return nil
 }
@@ -344,10 +371,12 @@ func validateFilePath(path string) (exists bool, accessible bool, isDir bool) {
 
 	// Expand tilde notation
 	expandedPath := path
-	if strings.HasPrefix(path, "~/") && homeDir != "" {
-		expandedPath = filepath.Join(homeDir, path[2:])
-	} else if strings.HasPrefix(path, "~") && homeDir != "" {
-		// Handle ~ alone
+	switch {
+	case strings.HasPrefix(path, "~/") && homeDir != "":
+		expandedPath = filepath.Join(homeDir, filepath.FromSlash(path[2:]))
+	case strings.HasPrefix(path, `~\`) && homeDir != "":
+		expandedPath = filepath.Join(homeDir, filepath.FromSlash(strings.ReplaceAll(path[2:], `\`, "/")))
+	case path == "~" && homeDir != "":
 		expandedPath = homeDir
 	}
 
@@ -474,7 +503,7 @@ func validateHostname(host string) error {
 	}
 
 	// Check for invalid characters using a single check
-	if strings.ContainsAny(host, invalidHostChars) {
+	if strings.ContainsAny(host, invalidHostChars) || !hostnameFieldPattern.MatchString(host) {
 		return fmt.Errorf("host contains invalid characters")
 	}
 
@@ -516,6 +545,43 @@ func validateHostLabel(label string) error {
 	return nil
 }
 
+func splitColonOutsideBrackets(value string) ([]string, error) {
+	parts := make([]string, 0, 4)
+	start := 0
+	depth := 0
+	for i := 0; i < len(value); i++ {
+		switch value[i] {
+		case '[':
+			if depth > 0 {
+				return nil, fmt.Errorf("nested brackets")
+			}
+			depth++
+		case ']':
+			if depth == 0 {
+				return nil, fmt.Errorf("unmatched closing bracket")
+			}
+			depth--
+		case ':':
+			if depth == 0 {
+				parts = append(parts, value[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if depth != 0 {
+		return nil, fmt.Errorf("unclosed bracket")
+	}
+	parts = append(parts, value[start:])
+	return parts, nil
+}
+
+func unwrapBracketedHost(value string) string {
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") && len(value) >= 2 {
+		return value[1 : len(value)-1]
+	}
+	return value
+}
+
 // validatePortForward validates port forwarding specification
 func validatePortForward(forward string) error {
 	if forward == "" {
@@ -531,28 +597,35 @@ func validatePortForward(forward string) error {
 		}
 
 		// Format: [bind_address:]port:host:hostport
-		parts := strings.Split(fwd, ":")
-		if len(parts) < 3 || len(parts) > 4 {
+		parts, err := splitColonOutsideBrackets(fwd)
+		if err != nil || len(parts) < 3 || len(parts) > 4 {
 			return fmt.Errorf("invalid format, expected [bind_address:]port:host:hostport")
 		}
 
-		// Validate ports
-		var portIdx, hostPortIdx int
+		// Validate ports and hosts
+		var portIdx, hostIdx, hostPortIdx int
 		if len(parts) == 3 {
 			// port:host:hostport
 			portIdx = 0
+			hostIdx = 1
 			hostPortIdx = 2
 		} else {
 			// bind_address:port:host:hostport
 			portIdx = 1
+			hostIdx = 2
 			hostPortIdx = 3
 
 			// Validate bind address
-			if parts[0] != "" && parts[0] != "*" {
-				if err := validateBindAddress(parts[0]); err != nil {
+			bindAddr := unwrapBracketedHost(parts[0])
+			if bindAddr != "" && bindAddr != "*" {
+				if err := validateBindAddress(bindAddr); err != nil {
 					return fmt.Errorf("invalid bind address: %w", err)
 				}
 			}
+		}
+
+		if err := validateHost(unwrapBracketedHost(parts[hostIdx])); err != nil {
+			return fmt.Errorf("invalid host: %w", err)
 		}
 
 		// Validate port numbers
@@ -585,8 +658,8 @@ func validateDynamicForward(forward string) error {
 		}
 
 		// Format: [bind_address:]port
-		parts := strings.Split(fwd, ":")
-		if len(parts) > 2 {
+		parts, err := splitColonOutsideBrackets(fwd)
+		if err != nil || len(parts) > 2 {
 			return fmt.Errorf("invalid format, expected [bind_address:]port")
 		}
 
@@ -596,8 +669,9 @@ func validateDynamicForward(forward string) error {
 			portStr = parts[0]
 		} else {
 			// bind_address:port
-			if parts[0] != "" && parts[0] != "*" {
-				if err := validateBindAddress(parts[0]); err != nil {
+			bindAddr := unwrapBracketedHost(parts[0])
+			if bindAddr != "" && bindAddr != "*" {
+				if err := validateBindAddress(bindAddr); err != nil {
 					return fmt.Errorf("invalid bind address: %w", err)
 				}
 			}
@@ -707,7 +781,5 @@ func validateAddressLabels(address string) error {
 
 // stripColorTags removes tview color tags from a string
 func stripColorTags(s string) string {
-	// Remove all tview color tags like [red], [-], [yellow], etc.
-	colorTagRegex := regexp.MustCompile(`\[[^\]]*\]`)
-	return colorTagRegex.ReplaceAllString(s, "")
+	return tviewColorTagRegex.ReplaceAllString(s, "")
 }

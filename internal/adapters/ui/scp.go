@@ -59,12 +59,14 @@ func detectSCPProtocol() (SCPProtocol, error) {
 }
 
 func scpProtocolFromUsage(usage string) (SCPProtocol, error) {
-	flags := scpUsageFlags.FindStringSubmatch(usage)
-	if len(flags) != 2 {
+	matches := scpUsageFlags.FindAllStringSubmatch(usage, -1)
+	if len(matches) == 0 {
 		return 0, fmt.Errorf("could not determine supported scp protocol from its usage output")
 	}
-	if strings.ContainsRune(flags[1], 's') {
-		return SCPOverSFTP, nil
+	for _, match := range matches {
+		if len(match) == 2 && strings.ContainsRune(match[1], 's') {
+			return SCPOverSFTP, nil
+		}
 	}
 	return SCPLegacy, nil
 }
@@ -113,7 +115,11 @@ func BuildSCPCommand(alias, configPath, localPath, remotePath string, upload, re
 		}
 	}
 	// A relative local filename containing ':' otherwise looks like a remote target.
-	if runtime.GOOS != windowsOS && !strings.HasPrefix(localPath, "/") && strings.Contains(localPath, ":") {
+	if runtime.GOOS != windowsOS &&
+		!strings.HasPrefix(localPath, "/") &&
+		!strings.HasPrefix(localPath, "./") &&
+		!strings.HasPrefix(localPath, "../") &&
+		strings.Contains(localPath, ":") {
 		localPath = "./" + localPath
 	}
 	if runtime.GOOS == windowsOS {

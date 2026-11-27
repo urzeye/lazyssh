@@ -206,7 +206,7 @@ func GetFieldPlaceholder(fieldName string) string {
 	case "BindAddress":
 		return "IP, hostname, * (all), or localhost"
 	case "CanonicalDomains":
-		return "e.g., example.com, internal.net"
+		return "e.g., example.com internal.net"
 	case "CanonicalizePermittedCNAMEs":
 		return "e.g., *.example.com:example.net"
 	case "LocalCommand":
