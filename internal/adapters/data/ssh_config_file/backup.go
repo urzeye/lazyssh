@@ -53,7 +53,10 @@ func (r *Repository) createBackup() error {
 	}
 
 	sort.Slice(backupFiles, func(i, j int) bool {
-		return backupFiles[i].ModTime().After(backupFiles[j].ModTime())
+		if !backupFiles[i].ModTime().Equal(backupFiles[j].ModTime()) {
+			return backupFiles[i].ModTime().After(backupFiles[j].ModTime())
+		}
+		return backupFiles[i].Name() > backupFiles[j].Name()
 	})
 
 	for i := MaxBackups; i < len(backupFiles); i++ {

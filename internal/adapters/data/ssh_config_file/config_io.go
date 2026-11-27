@@ -84,8 +84,12 @@ func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
 		return fmt.Errorf("failed to create temporary file: %w", err)
 	}
 
+	renamed := false
 	defer func() {
-		if removeErr := r.fileSystem.Remove(tempFile); removeErr != nil {
+		if renamed {
+			return
+		}
+		if removeErr := r.fileSystem.Remove(tempFile); removeErr != nil && !r.fileSystem.IsNotExist(removeErr) {
 			r.logger.Warnf("failed to remove temporary file %s: %v", tempFile, removeErr)
 		}
 	}()
@@ -106,6 +110,7 @@ func (r *Repository) saveConfig(cfg *ssh_config.Config) error {
 	if err := r.fileSystem.Rename(tempFile, writePath); err != nil {
 		return fmt.Errorf("failed to atomically replace config file: %w", err)
 	}
+	renamed = true
 
 	r.logger.Infof("SSH config successfully updated: %s", r.writeConfigPath)
 	return nil
@@ -137,9 +142,9 @@ func (r *Repository) writeConfigToFile(filePath string, cfg *ssh_config.Config) 
 
 // createTempFile creates a temporary file in the specified directory
 func (r *Repository) createTempFile(dir string) (string, error) {
-	timestamp := time.Now().Format("20060102150405")
+	timestamp := time.Now().UnixNano()
 	baseName := filepath.Base(r.writeConfigPath)
-	tempFileName := fmt.Sprintf("%s.%s%s", baseName, timestamp, TempSuffix)
+	tempFileName := fmt.Sprintf("%s.%d%s", baseName, timestamp, TempSuffix)
 	tempFilePath := filepath.Join(dir, tempFileName)
 
 	// Create the temp file with explicit 0600 permissions
