@@ -99,8 +99,9 @@ var effectiveMultiValueKeys = []string{
 	"SetEnv",
 }
 
-func (r *Repository) toDomainServerFromHost(entry discoveredHost, effective []effectiveBlock, readonly bool) (domain.Server, bool) {
+func discoverHostAliases(entry discoveredHost) []string {
 	aliases := make([]string, 0, len(entry.host.Patterns))
+	seenInHost := make(map[string]struct{}, len(entry.host.Patterns))
 	for _, pattern := range entry.host.Patterns {
 		alias := normalizeHostAlias(pattern.String())
 		// Skip if alias contains wildcards or negation (not a concrete Host)
@@ -111,8 +112,16 @@ func (r *Repository) toDomainServerFromHost(entry discoveredHost, effective []ef
 		if !guardsMatchAlias(entry.guards, alias) {
 			continue
 		}
+		if _, dup := seenInHost[alias]; dup {
+			continue
+		}
+		seenInHost[alias] = struct{}{}
 		aliases = append(aliases, alias)
 	}
+	return aliases
+}
+
+func (r *Repository) toDomainServerFromAliases(entry discoveredHost, aliases []string, effective []effectiveBlock, readonly bool) (domain.Server, bool) {
 	if len(aliases) == 0 {
 		return domain.Server{}, false
 	}

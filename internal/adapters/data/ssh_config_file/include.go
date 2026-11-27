@@ -62,15 +62,24 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 	discovered := make([]discoveredHost, 0, len(rootCfg.Hosts)*2)
 	r.flattenConfig(mainPath, rootCfg, nil, ancestors, 0, &effective, &discovered)
 
+	// Collect aliases defined in the writable target first so an earlier
+	// read-only included Host block cannot shadow a writable definition of the
+	// same alias (effective values are still evaluated in full OpenSSH order).
+	writableAliases := make(map[string]struct{}, len(discovered))
+	for _, entry := range discovered {
+		if !sameConfigFile(entry.sourceFile, writablePath) {
+			continue
+		}
+		markAliasesSeen(writableAliases, discoverHostAliases(entry))
+	}
+
 	servers := make([]domain.Server, 0, len(discovered))
 	seenAliases := make(map[string]struct{}, len(discovered))
 	for _, entry := range discovered {
 		readonly := !sameConfigFile(entry.sourceFile, writablePath)
-		server, ok := r.toDomainServerFromHost(entry, effective, readonly)
+		aliases := filterNewAliases(discoverHostAliases(entry), seenAliases, writableAliases, readonly)
+		server, ok := r.toDomainServerFromAliases(entry, aliases, effective, readonly)
 		if !ok {
-			continue
-		}
-		if aliasesAlreadySeen(seenAliases, server.Aliases) {
 			continue
 		}
 		markAliasesSeen(seenAliases, server.Aliases)
@@ -406,13 +415,20 @@ func unquote(value string) string {
 	return value
 }
 
-func aliasesAlreadySeen(seen map[string]struct{}, aliases []string) bool {
+func filterNewAliases(aliases []string, seen, writable map[string]struct{}, readonly bool) []string {
+	filtered := make([]string, 0, len(aliases))
 	for _, alias := range aliases {
 		if _, exists := seen[alias]; exists {
-			return true
+			continue
 		}
+		if readonly {
+			if _, ownedByWritable := writable[alias]; ownedByWritable {
+				continue
+			}
+		}
+		filtered = append(filtered, alias)
 	}
-	return false
+	return filtered
 }
 
 func markAliasesSeen(seen map[string]struct{}, aliases []string) {

@@ -480,3 +480,68 @@ Host foo-*
 		t.Fatalf("foo-1 = %+v, want discovered under outer guard + Match all", foo)
 	}
 }
+
+func TestWritableDuplicateAliasTakesPrecedenceOverEarlierReadOnlyInclude(t *testing.T) {
+	dir := t.TempDir()
+	rootConfig := filepath.Join(dir, "config")
+	childConfig := filepath.Join(dir, "child.conf")
+
+	childText := `Host app-ro app
+    HostName 10.50.0.1
+`
+	rootText := `Include ` + filepath.ToSlash(childConfig) + `
+
+Host app
+    User root-override
+`
+	if err := os.WriteFile(childConfig, []byte(childText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootConfig, []byte(rootText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(dir, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 2 {
+		t.Fatalf("expected app-ro (readonly) and app (writable), got %+v", servers)
+	}
+
+	byAlias := make(map[string]domain.Server, len(servers))
+	for _, s := range servers {
+		byAlias[s.Alias] = s
+	}
+
+	ro, ok := byAlias["app-ro"]
+	if !ok || !ro.Readonly || ro.SourceFile != childConfig || ro.Host != "10.50.0.1" {
+		t.Fatalf("app-ro = %+v, want readonly server from child config", ro)
+	}
+
+	rw, ok := byAlias["app"]
+	if !ok || rw.Readonly || rw.SourceFile != rootConfig || rw.Host != "10.50.0.1" || rw.User != "root-override" {
+		t.Fatalf("app = %+v, want writable server with merged effective options", rw)
+	}
+
+	updated := rw
+	updated.User = "deploy"
+	if err := repo.UpdateServer(rw, updated); err != nil {
+		t.Fatalf("UpdateServer() on writable duplicate alias failed: %v", err)
+	}
+
+	after, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() after update error = %v", err)
+	}
+	var updatedApp domain.Server
+	for _, s := range after {
+		if s.Alias == "app" {
+			updatedApp = s
+		}
+	}
+	if updatedApp.User != "deploy" || updatedApp.Host != "10.50.0.1" || updatedApp.Readonly {
+		t.Fatalf("updated app = %+v, want User=deploy Host=10.50.0.1 Readonly=false", updatedApp)
+	}
+}
