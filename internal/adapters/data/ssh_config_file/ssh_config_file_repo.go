@@ -221,10 +221,10 @@ func (r *Repository) DeleteServer(server domain.Server) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	initialCount := len(cfg.Hosts)
-	cfg.Hosts = r.removeHostByAlias(cfg.Hosts, server.Alias)
+	var removed bool
+	cfg.Hosts, removed = r.removeHostByAlias(cfg.Hosts, server.Alias)
 
-	if len(cfg.Hosts) == initialCount {
+	if !removed {
 		return fmt.Errorf("server with alias '%s' not found", server.Alias)
 	}
 

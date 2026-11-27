@@ -344,3 +344,68 @@ Host bar
 		t.Fatalf("unexpected server from conditional include: %+v", servers[0])
 	}
 }
+
+func TestUpdateAndDeleteHostPreserveFollowingMatchBlock(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+	initial := `Host app
+    HostName 10.0.0.1
+    User appuser
+    ServerAliveInterval 30
+    IdentityFile ~/.ssh/app_key
+
+Match host *.internal
+    User conditional-user
+    Port 2299
+    ServerAliveInterval 15
+    IdentityFile ~/.ssh/internal_key
+`
+	if err := os.WriteFile(configPath, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), configPath, filepath.Join(dir, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil || len(servers) != 1 {
+		t.Fatalf("ListServers() = %+v, %v", servers, err)
+	}
+
+	updated := servers[0]
+	updated.User = "updated-user"
+	updated.Port = 2222
+	updated.ServerAliveInterval = ""
+	updated.ForwardAgent = "yes"
+	updated.IdentityFiles = nil
+	if err := repo.UpdateServer(servers[0], updated); err != nil {
+		t.Fatalf("UpdateServer() error = %v", err)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	matchSection := "Match host *.internal\n    User conditional-user\n    Port 2299\n    ServerAliveInterval 15\n    IdentityFile ~/.ssh/internal_key\n"
+	if !strings.HasSuffix(text, matchSection) {
+		t.Fatalf("UpdateServer mutated or misordered trailing Match section:\n%s", text)
+	}
+	matchIdx := strings.Index(text, "Match host *.internal")
+	forwardIdx := strings.Index(text, "ForwardAgent yes")
+	if forwardIdx < 0 || forwardIdx > matchIdx {
+		t.Fatalf("new host option was inserted after Match boundary:\n%s", text)
+	}
+	if strings.Contains(text[:matchIdx], "ServerAliveInterval") {
+		t.Fatalf("cleared host option still present before Match boundary:\n%s", text)
+	}
+
+	if err := repo.DeleteServer(updated); err != nil {
+		t.Fatalf("DeleteServer() error = %v", err)
+	}
+	data, err = os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), matchSection) {
+		t.Fatalf("DeleteServer dropped trailing Match section:\n%s", string(data))
+	}
+}

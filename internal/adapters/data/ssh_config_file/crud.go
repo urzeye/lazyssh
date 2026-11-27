@@ -140,6 +140,18 @@ func (r *Repository) addKVNodeIfNotEmpty(host *ssh_config.Host, key, value strin
 	r.insertKVNodeAfterLastKV(host, kvNode)
 }
 
+// matchBoundaryIndex returns the index of the first Match directive in nodes,
+// or len(nodes) if none exists. The ssh_config parser attaches Match blocks to
+// the preceding Host's Nodes slice; host edits must not cross that boundary.
+func matchBoundaryIndex(nodes []ssh_config.Node) int {
+	for i, node := range nodes {
+		if kv, ok := node.(*ssh_config.KV); ok && strings.EqualFold(kv.Key, "match") {
+			return i
+		}
+	}
+	return len(nodes)
+}
+
 // insertKVNodeAfterLastKV inserts a KV node immediately after the last existing KV node in the host.
 // This preserves any trailing non-KV nodes (blank lines, comments) that may exist after the host's
 // configuration block, preventing formatting shifts when adding new fields to a host entry.
@@ -148,22 +160,24 @@ func (r *Repository) addKVNodeIfNotEmpty(host *ssh_config.Host, key, value strin
 // this function ensures new fields are inserted before those blank lines, maintaining the
 // visual separation between host blocks.
 func (r *Repository) insertKVNodeAfterLastKV(host *ssh_config.Host, kvNode *ssh_config.KV) {
-	// STEP 1: Find the last KV node (search backwards)
+	boundary := matchBoundaryIndex(host.Nodes)
+
+	// STEP 1: Find the last KV node before any Match boundary (search backwards)
 	lastKVIndex := -1
-	for i := len(host.Nodes) - 1; i >= 0; i-- {
+	for i := boundary - 1; i >= 0; i-- {
 		if _, ok := host.Nodes[i].(*ssh_config.KV); ok {
 			lastKVIndex = i
 			break
 		}
 	}
 
-	// STEP 2: Handle case where no KV nodes exist
+	// STEP 2: Handle case where no KV nodes exist before the Match boundary
 	if lastKVIndex == -1 {
 		if len(host.Nodes) == 0 {
 			// Case A: Empty host - just append
 			host.Nodes = append(host.Nodes, kvNode)
 		} else {
-			// Case B: Only comments/blanks exist - prepend before them
+			// Case B: Only comments/blanks or Match nodes exist - prepend before them
 			host.Nodes = append([]ssh_config.Node{kvNode}, host.Nodes...)
 		}
 		return
@@ -178,14 +192,15 @@ func (r *Repository) insertKVNodeAfterLastKV(host *ssh_config.Host, kvNode *ssh_
 		return
 	}
 
-	// Case D: Last KV has trailing nodes (blanks/comments) - insert between them
+	// Case D: Last KV has trailing nodes (blanks/comments/Match) - insert between them
 	host.Nodes = append(host.Nodes[:insertAt], append([]ssh_config.Node{kvNode}, host.Nodes[insertAt:]...)...)
 }
 
-// removeNodesByKey removes all nodes with the specified key from the nodes slice
+// removeNodesByKey removes all nodes with the specified key before any Match boundary.
 func removeNodesByKey(nodes []ssh_config.Node, key string) []ssh_config.Node {
+	boundary := matchBoundaryIndex(nodes)
 	filtered := make([]ssh_config.Node, 0, len(nodes))
-	for _, node := range nodes {
+	for _, node := range nodes[:boundary] {
 		if kv, ok := node.(*ssh_config.KV); ok {
 			if strings.EqualFold(kv.Key, key) {
 				continue // skip nodes with matching key
@@ -193,7 +208,7 @@ func removeNodesByKey(nodes []ssh_config.Node, key string) []ssh_config.Node {
 		}
 		filtered = append(filtered, node)
 	}
-	return filtered
+	return append(filtered, nodes[boundary:]...)
 }
 
 type hostOptionUpdate struct {
@@ -327,23 +342,29 @@ func matchesOptionGroup(nodeKey, canonical string, aliases []string) bool {
 }
 
 func (r *Repository) setHostOptionGroup(host *ssh_config.Host, key string, aliases []string, value string) {
+	boundary := matchBoundaryIndex(host.Nodes)
+	hostNodes := host.Nodes[:boundary]
+	matchTail := host.Nodes[boundary:]
+
 	if value == "" {
 		filtered := make([]ssh_config.Node, 0, len(host.Nodes))
-		for _, node := range host.Nodes {
+		for _, node := range hostNodes {
 			if kvNode, ok := node.(*ssh_config.KV); ok && matchesOptionGroup(kvNode.Key, key, aliases) {
 				continue
 			}
 			filtered = append(filtered, node)
 		}
+		filtered = append(filtered, matchTail...)
 		host.Nodes = filtered
 		return
 	}
 
 	// Update the first matching directive (canonical or deprecated alias) in place
-	// and remove any redundant duplicate directives in the same group.
+	// and remove any redundant duplicate directives in the same group, without
+	// crossing into any trailing Match section attached to host.Nodes.
 	updated := false
 	filtered := make([]ssh_config.Node, 0, len(host.Nodes))
-	for _, node := range host.Nodes {
+	for _, node := range hostNodes {
 		if kvNode, ok := node.(*ssh_config.KV); ok && matchesOptionGroup(kvNode.Key, key, aliases) {
 			if !updated {
 				kvNode.Value = value
@@ -354,6 +375,7 @@ func (r *Repository) setHostOptionGroup(host *ssh_config.Host, key string, alias
 		}
 		filtered = append(filtered, node)
 	}
+	filtered = append(filtered, matchTail...)
 	host.Nodes = filtered
 	if updated {
 		return
@@ -521,14 +543,27 @@ func (r *Repository) convertCLIForwardToConfigFormat(forward string) string {
 	return forward
 }
 
-// removeHostByAlias removes a host by its alias from the list of hosts.
-func (r *Repository) removeHostByAlias(hosts []*ssh_config.Host, alias string) []*ssh_config.Host {
+// removeHostByAlias removes a host by its alias from the list of hosts while
+// preserving any trailing Match section attached to that host by the parser.
+func (r *Repository) removeHostByAlias(hosts []*ssh_config.Host, alias string) ([]*ssh_config.Host, bool) {
 	for i, host := range hosts {
 		if r.hostContainsPattern(host, alias) {
-			return append(hosts[:i], hosts[i+1:]...)
+			boundary := matchBoundaryIndex(host.Nodes)
+			if boundary < len(host.Nodes) {
+				if i > 0 {
+					hosts[i-1].Nodes = append(hosts[i-1].Nodes, host.Nodes[boundary:]...)
+				} else {
+					hosts[0] = &ssh_config.Host{
+						Implicit: true,
+						Nodes:    host.Nodes[boundary:],
+					}
+					return hosts, true
+				}
+			}
+			return append(hosts[:i], hosts[i+1:]...), true
 		}
 	}
-	return hosts
+	return hosts, false
 }
 
 func normalizeIdentityFilePath(path string) string {
