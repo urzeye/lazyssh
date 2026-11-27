@@ -99,6 +99,7 @@ func (r *Repository) flattenConfig(
 			})
 		}
 
+		activeHost := host
 		currentNodes := make([]*ssh_config.KV, 0, len(host.Nodes))
 		flushNodes := func() {
 			if len(currentNodes) == 0 {
@@ -106,37 +107,43 @@ func (r *Repository) flattenConfig(
 			}
 			*effective = append(*effective, effectiveBlock{
 				guards: guards,
-				host:   host,
+				host:   activeHost,
 				nodes:  currentNodes,
 			})
 			currentNodes = nil
 		}
 
-		inMatchBlock := false
+		skipMatchBlock := false
 		for _, node := range host.Nodes {
 			switch typed := node.(type) {
 			case *ssh_config.KV:
-				// Match directives start a conditional section that ssh_config
-				// attaches to the preceding Host block; do not leak its options
-				// into that Host block or panic on evaluation.
+				// Match directives start a new section that ssh_config attaches to
+				// the preceding Host block. Treat unconditional "Match all" as
+				// resuming global scope (still bounded by outer Include guards),
+				// and skip conditional Match blocks we cannot evaluate statically.
 				if strings.EqualFold(typed.Key, "match") {
 					flushNodes()
-					inMatchBlock = true
+					if isUnconditionalMatchAll(typed.Value) {
+						activeHost = &ssh_config.Host{Implicit: true}
+						skipMatchBlock = false
+					} else {
+						skipMatchBlock = true
+					}
 					continue
 				}
-				if inMatchBlock {
+				if skipMatchBlock {
 					continue
 				}
 				currentNodes = append(currentNodes, typed)
 			case *ssh_config.Include:
-				if inMatchBlock || depth >= maxIncludeDepth {
+				if skipMatchBlock || depth >= maxIncludeDepth {
 					continue
 				}
 				flushNodes()
 
 				childGuards := guards
-				if !host.Implicit {
-					childGuards = append(append([]*ssh_config.Host(nil), guards...), host)
+				if !activeHost.Implicit {
+					childGuards = append(append([]*ssh_config.Host(nil), guards...), activeHost)
 				}
 
 				for _, match := range r.resolveIncludeLine(baseDir, typed.String(), ancestors) {
@@ -154,6 +161,11 @@ func (r *Repository) flattenConfig(
 		}
 		flushNodes()
 	}
+}
+
+func isUnconditionalMatchAll(value string) bool {
+	fields := strings.Fields(value)
+	return len(fields) == 1 && strings.EqualFold(fields[0], "all")
 }
 
 func (r *Repository) resolveIncludeLine(baseDir, line string, ancestors map[string]struct{}) []string {

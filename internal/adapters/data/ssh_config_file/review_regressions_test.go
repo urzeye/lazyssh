@@ -409,3 +409,74 @@ Match host *.internal
 		t.Fatalf("DeleteServer dropped trailing Match section:\n%s", string(data))
 	}
 }
+
+func TestMatchAllResumesUnconditionalOptionsAndIncludes(t *testing.T) {
+	dir := t.TempDir()
+	rootConfig := filepath.Join(dir, "config")
+	skippedConfig := filepath.Join(dir, "skipped.conf")
+	childConfig := filepath.Join(dir, "child.conf")
+	outerChildConfig := filepath.Join(dir, "outer-child.conf")
+	scopedMidConfig := filepath.Join(dir, "scoped-mid.conf")
+
+	if err := os.WriteFile(skippedConfig, []byte("Host skipped-box\n    HostName 10.0.0.99\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(childConfig, []byte("Host child-box\n    HostName 10.2.3.4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outerChildConfig, []byte("Host foo-1\n    HostName 10.8.8.8\n\nHost bar\n    HostName 10.9.9.9\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scopedMidConfig, []byte("Match all\n    Include "+filepath.ToSlash(outerChildConfig)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rootText := `Host app
+    HostName 10.0.0.1
+
+Match host *.other
+    User conditional-user
+    Include ` + filepath.ToSlash(skippedConfig) + `
+
+Match all
+    ServerAliveInterval 60
+    Include ` + filepath.ToSlash(childConfig) + `
+
+Host foo-*
+    Include ` + filepath.ToSlash(scopedMidConfig) + `
+`
+	if err := os.WriteFile(rootConfig, []byte(rootText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(dir, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+
+	byAlias := make(map[string]domain.Server, len(servers))
+	for _, s := range servers {
+		byAlias[s.Alias] = s
+	}
+
+	if _, exists := byAlias["skipped-box"]; exists {
+		t.Fatalf("conditional Match include should not have been traversed: %+v", servers)
+	}
+	if _, exists := byAlias["bar"]; exists {
+		t.Fatalf("outer Host guard should still exclude unmatched host under nested Match all: %+v", servers)
+	}
+
+	app, ok := byAlias["app"]
+	if !ok || app.Host != "10.0.0.1" || app.User != "" || app.ServerAliveInterval != "60" {
+		t.Fatalf("app = %+v, want Match all option without conditional Match leak", app)
+	}
+	child, ok := byAlias["child-box"]
+	if !ok || child.Host != "10.2.3.4" || child.ServerAliveInterval != "60" {
+		t.Fatalf("child-box = %+v, want discovered under Match all with ServerAliveInterval 60", child)
+	}
+	foo, ok := byAlias["foo-1"]
+	if !ok || foo.Host != "10.8.8.8" || foo.ServerAliveInterval != "60" {
+		t.Fatalf("foo-1 = %+v, want discovered under outer guard + Match all", foo)
+	}
+}
