@@ -99,12 +99,16 @@ var effectiveMultiValueKeys = []string{
 	"SetEnv",
 }
 
-func (r *Repository) toDomainServerFromHost(host *ssh_config.Host, effective []effectiveBlock, sourceFile string, readonly bool) (domain.Server, bool) {
-	aliases := make([]string, 0, len(host.Patterns))
-	for _, pattern := range host.Patterns {
+func (r *Repository) toDomainServerFromHost(entry discoveredHost, effective []effectiveBlock, readonly bool) (domain.Server, bool) {
+	aliases := make([]string, 0, len(entry.host.Patterns))
+	for _, pattern := range entry.host.Patterns {
 		alias := normalizeHostAlias(pattern.String())
 		// Skip if alias contains wildcards or negation (not a concrete Host)
 		if alias == "" || strings.ContainsAny(alias, "!*?[]") {
+			continue
+		}
+		// Only discover aliases that satisfy all enclosing conditional Include guards.
+		if !guardsMatchAlias(entry.guards, alias) {
 			continue
 		}
 		aliases = append(aliases, alias)
@@ -118,14 +122,14 @@ func (r *Repository) toDomainServerFromHost(host *ssh_config.Host, effective []e
 		Aliases:       aliases,
 		Port:          22,
 		IdentityFiles: []string{},
-		SourceFile:    sourceFile,
+		SourceFile:    entry.sourceFile,
 		Readonly:      readonly,
 	}
 
 	if len(effective) > 0 {
-		r.applyEffectiveBlocks(&server, effective, host)
+		r.applyEffectiveBlocks(&server, effective)
 	} else {
-		r.applyHostNodes(&server, host)
+		r.applyHostNodes(&server, entry.host)
 	}
 
 	return server, true
@@ -145,22 +149,13 @@ func (r *Repository) applyHostNodes(server *domain.Server, host *ssh_config.Host
 	}
 }
 
-func (r *Repository) applyEffectiveBlocks(server *domain.Server, blocks []effectiveBlock, host *ssh_config.Host) {
+func (r *Repository) applyEffectiveBlocks(server *domain.Server, blocks []effectiveBlock) {
 	matchingNodes := make([]*ssh_config.KV, 0, 16)
-	matchedOwnHost := false
 	for _, block := range blocks {
 		if !effectiveBlockMatches(block, server.Alias) {
 			continue
 		}
-		if block.host == host {
-			matchedOwnHost = true
-		}
 		matchingNodes = append(matchingNodes, block.nodes...)
-	}
-
-	if !matchedOwnHost {
-		r.applyHostNodes(server, host)
-		return
 	}
 
 	for _, group := range effectiveSingleValueGroups {
@@ -178,13 +173,17 @@ func (r *Repository) applyEffectiveBlocks(server *domain.Server, blocks []effect
 	}
 }
 
-func effectiveBlockMatches(block effectiveBlock, alias string) bool {
-	for _, guard := range block.guards {
+func guardsMatchAlias(guards []*ssh_config.Host, alias string) bool {
+	for _, guard := range guards {
 		if !hostMatchesAlias(guard, alias) {
 			return false
 		}
 	}
-	return hostMatchesAlias(block.host, alias)
+	return true
+}
+
+func effectiveBlockMatches(block effectiveBlock, alias string) bool {
+	return guardsMatchAlias(block.guards, alias) && hostMatchesAlias(block.host, alias)
 }
 
 func firstMatchingNodeValue(nodes []*ssh_config.KV, group effectiveKeyGroup) (string, bool) {

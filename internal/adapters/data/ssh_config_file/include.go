@@ -33,6 +33,7 @@ type effectiveBlock struct {
 }
 
 type discoveredHost struct {
+	guards     []*ssh_config.Host
 	host       *ssh_config.Host
 	sourceFile string
 }
@@ -65,7 +66,7 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 	seenAliases := make(map[string]struct{}, len(discovered))
 	for _, entry := range discovered {
 		readonly := !sameConfigFile(entry.sourceFile, writablePath)
-		server, ok := r.toDomainServerFromHost(entry.host, effective, entry.sourceFile, readonly)
+		server, ok := r.toDomainServerFromHost(entry, effective, readonly)
 		if !ok {
 			continue
 		}
@@ -91,7 +92,11 @@ func (r *Repository) flattenConfig(
 	baseDir := filepath.Dir(filePath)
 	for _, host := range cfg.Hosts {
 		if !host.Implicit {
-			*discovered = append(*discovered, discoveredHost{host: host, sourceFile: filePath})
+			*discovered = append(*discovered, discoveredHost{
+				guards:     guards,
+				host:       host,
+				sourceFile: filePath,
+			})
 		}
 
 		currentNodes := make([]*ssh_config.KV, 0, len(host.Nodes))

@@ -309,3 +309,38 @@ func TestRecordSSHNormalizesSecondaryAliasAndRenameDeduplicates(t *testing.T) {
 		t.Fatalf("renaming to secondary alias duplicated pattern:\n%s", data)
 	}
 }
+
+func TestConditionalIncludeExcludesUnmatchedHosts(t *testing.T) {
+	dir := t.TempDir()
+	rootConfig := filepath.Join(dir, "config")
+	conditionalConfig := filepath.Join(dir, "conditional.conf")
+
+	conditionalText := `Host foo-1
+    HostName 10.10.0.1
+
+Host bar
+    HostName 10.10.0.2
+`
+	rootText := `Host foo-*
+    User scoped-user
+    Include ` + filepath.ToSlash(conditionalConfig) + `
+`
+	if err := os.WriteFile(conditionalConfig, []byte(conditionalText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootConfig, []byte(rootText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(dir, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("expected only guard-matched host foo-1, got %+v", servers)
+	}
+	if servers[0].Alias != "foo-1" || servers[0].Host != "10.10.0.1" || servers[0].User != "scoped-user" {
+		t.Fatalf("unexpected server from conditional include: %+v", servers[0])
+	}
+}
