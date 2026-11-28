@@ -42,7 +42,7 @@ func TestListServersLoadsIncludedConfigsRecursively(t *testing.T) {
 		t.Fatalf("write main config: %v", err)
 	}
 
-	includedConfig := "Include nested/*.conf\n\nHost included-server\n    HostName 10.0.0.1\n    User deploy\n\nHost main-server\n    HostName shadowed.example.com\n"
+	includedConfig := "Include config.d/nested/*.conf\n\nHost included-server\n    HostName 10.0.0.1\n    User deploy\n\nHost main-server\n    HostName shadowed.example.com\n"
 	if err := os.WriteFile(filepath.Join(confDir, "01-work.conf"), []byte(includedConfig), 0o600); err != nil {
 		t.Fatalf("write included config: %v", err)
 	}

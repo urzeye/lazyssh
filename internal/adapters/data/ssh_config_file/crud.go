@@ -162,10 +162,11 @@ func matchBoundaryIndex(nodes []ssh_config.Node) int {
 func (r *Repository) insertKVNodeAfterLastKV(host *ssh_config.Host, kvNode *ssh_config.KV) {
 	boundary := matchBoundaryIndex(host.Nodes)
 
-	// STEP 1: Find the last KV node before any Match boundary (search backwards)
+	// STEP 1: Find the last KV node before any Match boundary (search backwards),
+	// skipping Include directives so host-local options stay ahead of included defaults.
 	lastKVIndex := -1
 	for i := boundary - 1; i >= 0; i-- {
-		if _, ok := host.Nodes[i].(*ssh_config.KV); ok {
+		if kv, ok := host.Nodes[i].(*ssh_config.KV); ok && !strings.EqualFold(kv.Key, "include") {
 			lastKVIndex = i
 			break
 		}

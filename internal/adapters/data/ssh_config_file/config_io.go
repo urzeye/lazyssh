@@ -15,6 +15,7 @@
 package ssh_config_file
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,8 @@ import (
 
 	"github.com/kevinburke/ssh_config"
 )
+
+const deferredIncludeKeyPrefix = "__lazyssh_include_"
 
 // loadConfig reads and parses the SSH config file.
 // If the file does not exist, it returns an empty config without error to support first-run behavior.
@@ -54,10 +57,24 @@ func (r *Repository) loadConfigAt(path string) (*ssh_config.Config, error) {
 }
 
 func decodeConfig(reader io.Reader) (*ssh_config.Config, error) {
-	cfg, err := ssh_config.Decode(reader)
+	raw, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
+
+	// Defer Include directive parsing so ssh_config.Decode does not eagerly glob
+	// and read files on disk (which fails on matched subdirectories, recursion
+	// cycles >5 levels, or broken conditional Match includes). flattenConfig
+	// expands Include directives safely in OpenSSH evaluation order instead.
+	sanitized, deferred := deferIncludeDirectives(raw)
+	cfg, err := ssh_config.Decode(bytes.NewReader(sanitized))
+	if err != nil {
+		return nil, err
+	}
+	if deferred {
+		restoreDeferredIncludeKeys(cfg)
+	}
+
 	// The parser retains negation in its matcher but drops it from Pattern.Str.
 	// Restore the spelling for listing and serialization without changing matching.
 	for _, host := range cfg.Hosts {
@@ -69,6 +86,77 @@ func decodeConfig(reader io.Reader) (*ssh_config.Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func deferIncludeDirectives(raw []byte) ([]byte, bool) {
+	const kwLen = len("include")
+
+	var out bytes.Buffer
+	deferred := false
+	lineStart := 0
+	for lineStart < len(raw) {
+		lineEnd := lineStart
+		for lineEnd < len(raw) && raw[lineEnd] != '\n' {
+			lineEnd++
+		}
+		contentEnd := lineEnd
+		if contentEnd > lineStart && raw[contentEnd-1] == '\r' {
+			contentEnd--
+		}
+
+		keyStart := lineStart
+		for keyStart < contentEnd && (raw[keyStart] == ' ' || raw[keyStart] == '\t') {
+			keyStart++
+		}
+
+		isIncludeLine := false
+		if contentEnd-keyStart >= kwLen && strings.EqualFold(string(raw[keyStart:keyStart+kwLen]), "include") {
+			afterKey := keyStart + kwLen
+			if afterKey == contentEnd || raw[afterKey] == ' ' || raw[afterKey] == '\t' || raw[afterKey] == '=' {
+				isIncludeLine = true
+			}
+		}
+
+		nextLine := lineEnd
+		if nextLine < len(raw) && raw[nextLine] == '\n' {
+			nextLine++
+		}
+
+		if isIncludeLine {
+			if !deferred {
+				out.Grow(len(raw) + 64)
+				out.Write(raw[:lineStart])
+				deferred = true
+			}
+			out.Write(raw[lineStart:keyStart])
+			out.WriteString(deferredIncludeKeyPrefix)
+			out.Write(raw[keyStart:nextLine])
+		} else if deferred {
+			out.Write(raw[lineStart:nextLine])
+		}
+
+		lineStart = nextLine
+	}
+
+	if !deferred {
+		return raw, false
+	}
+	return out.Bytes(), true
+}
+
+func restoreDeferredIncludeKeys(cfg *ssh_config.Config) {
+	for _, host := range cfg.Hosts {
+		for _, node := range host.Nodes {
+			kv, ok := node.(*ssh_config.KV)
+			if !ok || !strings.HasPrefix(kv.Key, deferredIncludeKeyPrefix) {
+				continue
+			}
+			restored := kv.Key[len(deferredIncludeKeyPrefix):]
+			if strings.EqualFold(restored, "include") {
+				kv.Key = restored
+			}
+		}
+	}
 }
 
 // saveConfig writes the SSH config back to the file with atomic operations and backup management.

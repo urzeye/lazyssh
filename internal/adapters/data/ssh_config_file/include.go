@@ -58,9 +58,10 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 	}
 
 	ancestors := map[string]struct{}{canonicalConfigPath(mainPath): {}}
+	rootDir := filepath.Dir(mainPath)
 	effective := make([]effectiveBlock, 0, len(rootCfg.Hosts)*2)
 	discovered := make([]discoveredHost, 0, len(rootCfg.Hosts)*2)
-	r.flattenConfig(mainPath, rootCfg, nil, ancestors, 0, &effective, &discovered)
+	r.flattenConfig(mainPath, rootDir, rootCfg, nil, ancestors, 0, &effective, &discovered)
 
 	// Collect aliases defined in the writable target first so an earlier
 	// read-only included Host block cannot shadow a writable definition of the
@@ -91,6 +92,7 @@ func (r *Repository) loadAllServers() ([]domain.Server, error) {
 
 func (r *Repository) flattenConfig(
 	filePath string,
+	rootDir string,
 	cfg *ssh_config.Config,
 	guards []*ssh_config.Host,
 	ancestors map[string]struct{},
@@ -98,7 +100,6 @@ func (r *Repository) flattenConfig(
 	effective *[]effectiveBlock,
 	discovered *[]discoveredHost,
 ) {
-	baseDir := filepath.Dir(filePath)
 	for _, host := range cfg.Hosts {
 		if !host.Implicit {
 			*discovered = append(*discovered, discoveredHost{
@@ -140,6 +141,14 @@ func (r *Repository) flattenConfig(
 					}
 					continue
 				}
+				if strings.EqualFold(typed.Key, "include") {
+					if skipMatchBlock || depth >= maxIncludeDepth {
+						continue
+					}
+					flushNodes()
+					r.expandIncludeLine(rootDir, activeHost, guards, typed.String(), ancestors, depth, effective, discovered)
+					continue
+				}
 				if skipMatchBlock {
 					continue
 				}
@@ -149,26 +158,38 @@ func (r *Repository) flattenConfig(
 					continue
 				}
 				flushNodes()
-
-				childGuards := guards
-				if !activeHost.Implicit {
-					childGuards = append(append([]*ssh_config.Host(nil), guards...), activeHost)
-				}
-
-				for _, match := range r.resolveIncludeLine(baseDir, typed.String(), ancestors) {
-					childCfg, err := r.decodeConfigAt(match)
-					if err != nil {
-						r.logger.Warnf("failed to decode included config %s: %v", match, err)
-						continue
-					}
-					canonical := canonicalConfigPath(match)
-					ancestors[canonical] = struct{}{}
-					r.flattenConfig(match, childCfg, childGuards, ancestors, depth+1, effective, discovered)
-					delete(ancestors, canonical)
-				}
+				r.expandIncludeLine(rootDir, activeHost, guards, typed.String(), ancestors, depth, effective, discovered)
 			}
 		}
 		flushNodes()
+	}
+}
+
+func (r *Repository) expandIncludeLine(
+	rootDir string,
+	activeHost *ssh_config.Host,
+	guards []*ssh_config.Host,
+	line string,
+	ancestors map[string]struct{},
+	depth int,
+	effective *[]effectiveBlock,
+	discovered *[]discoveredHost,
+) {
+	childGuards := guards
+	if !activeHost.Implicit {
+		childGuards = append(append([]*ssh_config.Host(nil), guards...), activeHost)
+	}
+
+	for _, match := range r.resolveIncludeLine(rootDir, line, ancestors) {
+		childCfg, err := r.decodeConfigAt(match)
+		if err != nil {
+			r.logger.Warnf("failed to decode included config %s: %v", match, err)
+			continue
+		}
+		canonical := canonicalConfigPath(match)
+		ancestors[canonical] = struct{}{}
+		r.flattenConfig(match, rootDir, childCfg, childGuards, ancestors, depth+1, effective, discovered)
+		delete(ancestors, canonical)
 	}
 }
 
@@ -240,9 +261,16 @@ func parseIncludePatterns(line string) []string {
 		if fields[1] == "=" {
 			return fields[2:]
 		}
+		if strings.HasPrefix(fields[1], "=") && len(fields[1]) > 1 {
+			rest := []string{fields[1][1:]}
+			return append(rest, fields[2:]...)
+		}
 		return fields[1:]
 	}
-	if len(first) > len("Include=") && strings.EqualFold(first[:len("Include=")], "Include=") {
+	if len(first) >= len("Include=") && strings.EqualFold(first[:len("Include=")], "Include=") {
+		if len(first) == len("Include=") {
+			return fields[1:]
+		}
 		rest := []string{first[len("Include="):]}
 		return append(rest, fields[1:]...)
 	}

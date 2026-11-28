@@ -545,3 +545,176 @@ Host app
 		t.Fatalf("updated app = %+v, want User=deploy Host=10.50.0.1 Readonly=false", updatedApp)
 	}
 }
+
+func TestIncludeGlobSkipsSubdirectoriesCyclesAndDeepChains(t *testing.T) {
+	t.Run("glob with subdirectory and conditional match bad include", func(t *testing.T) {
+		dir := t.TempDir()
+		confDir := filepath.Join(dir, "conf.d")
+		if err := os.MkdirAll(filepath.Join(confDir, "subdir"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		badDir := filepath.Join(dir, "match-dir")
+		if err := os.MkdirAll(badDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(confDir, "01.conf"), []byte("Host from-glob\n    HostName 10.61.0.1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		rootConfig := filepath.Join(dir, "config")
+		rootText := "Include " + filepath.ToSlash(filepath.Join(confDir, "*")) + " # keep comment\n\n" +
+			"Host root-host\n    HostName 10.61.0.2\n\n" +
+			"Match host never-matches\n    Include " + filepath.ToSlash(badDir) + "\n"
+		if err := os.WriteFile(rootConfig, []byte(rootText), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(dir, "meta.json"))
+		servers, err := repo.ListServers("")
+		if err != nil {
+			t.Fatalf("ListServers() error = %v", err)
+		}
+		if len(servers) != 2 {
+			t.Fatalf("len(servers) = %d, want 2: %+v", len(servers), servers)
+		}
+
+		if err := repo.AddServer(domain.Server{Alias: "added-host", Host: "10.61.0.3", User: "ops"}); err != nil {
+			t.Fatalf("AddServer() failed with globbed subdir include: %v", err)
+		}
+		saved, err := os.ReadFile(rootConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(saved), "Include "+filepath.ToSlash(filepath.Join(confDir, "*"))+" # keep comment") {
+			t.Fatalf("AddServer altered Include directive:\n%s", string(saved))
+		}
+	})
+
+	t.Run("cyclic includes and >5 nested depth do not fail decode", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgA := filepath.Join(dir, "config")
+		cfgB := filepath.Join(dir, "b.conf")
+		if err := os.WriteFile(cfgA, []byte("Include "+filepath.ToSlash(cfgB)+"\nHost a-box\n    HostName 10.62.0.1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cfgB, []byte("Include "+filepath.ToSlash(cfgA)+"\nHost b-box\n    HostName 10.62.0.2\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		repo := NewRepository(zap.NewNop().Sugar(), cfgA, filepath.Join(dir, "meta.json"))
+		servers, err := repo.ListServers("")
+		if err != nil {
+			t.Fatalf("ListServers() on cyclic include failed: %v", err)
+		}
+		if len(servers) != 2 {
+			t.Fatalf("cyclic include len(servers) = %d, want 2: %+v", len(servers), servers)
+		}
+
+		// 7-level include chain (exceeds ssh_config's built-in depth limit of 5).
+		deepDir := t.TempDir()
+		for level := 0; level < 7; level++ {
+			file := filepath.Join(deepDir, "level"+string(rune('0'+level))+".conf")
+			var content string
+			if level < 6 {
+				nextFile := filepath.Join(deepDir, "level"+string(rune('0'+level+1))+".conf")
+				content = "Include " + filepath.ToSlash(nextFile) + "\n"
+			} else {
+				content = "Host deep-box\n    HostName 10.62.0.7\n"
+			}
+			if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		deepRepo := NewRepository(zap.NewNop().Sugar(), filepath.Join(deepDir, "level0.conf"), filepath.Join(deepDir, "meta.json"))
+		deepServers, err := deepRepo.ListServers("")
+		if err != nil {
+			t.Fatalf("ListServers() on 7-level include failed: %v", err)
+		}
+		if len(deepServers) != 1 || deepServers[0].Alias != "deep-box" || deepServers[0].Host != "10.62.0.7" {
+			t.Fatalf("deepServers = %+v, want deep-box", deepServers)
+		}
+	})
+}
+
+func TestNestedRelativeIncludesResolveFromRootConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	sshDir := filepath.Join(home, ".ssh")
+	confDir := filepath.Join(sshDir, "conf.d")
+	if err := os.MkdirAll(confDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	rootConfig := filepath.Join(sshDir, "config")
+	firstInclude := filepath.Join(confDir, "a.conf")
+	secondInclude := filepath.Join(confDir, "b.conf")
+
+	if err := os.WriteFile(rootConfig, []byte("Include conf.d/a.conf\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(firstInclude, []byte("Include conf.d/b.conf\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secondInclude, []byte("Host nested-rel\n    HostName 10.63.0.1\n    User ops\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(home, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil {
+		t.Fatalf("ListServers() error = %v", err)
+	}
+	if len(servers) != 1 || servers[0].Alias != "nested-rel" || servers[0].Host != "10.63.0.1" || servers[0].User != "ops" {
+		t.Fatalf("servers = %+v, want nested-rel (10.63.0.1 / ops)", servers)
+	}
+
+	if sshPath, err := exec.LookPath("ssh"); err == nil {
+		cmd := exec.Command(sshPath, "-G", "-F", rootConfig, "nested-rel")
+		cmd.Env = append(os.Environ(), "HOME="+home, "USERPROFILE="+home)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("ssh -G failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "hostname 10.63.0.1") || !strings.Contains(string(out), "user ops") {
+			t.Fatalf("OpenSSH disagrees with nested relative Include resolution:\n%s", out)
+		}
+	}
+}
+
+func TestUpdateHostInsertsOptionsBeforeHostScopedInclude(t *testing.T) {
+	dir := t.TempDir()
+	extraPath := filepath.Join(dir, "extra.conf")
+	rootConfig := filepath.Join(dir, "config")
+	if err := os.WriteFile(extraPath, []byte("User from-include\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	initial := "Host app\n    HostName 10.64.0.1\n    Include " + filepath.ToSlash(extraPath) + "\n"
+	if err := os.WriteFile(rootConfig, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(zap.NewNop().Sugar(), rootConfig, filepath.Join(dir, "meta.json"))
+	servers, err := repo.ListServers("")
+	if err != nil || len(servers) != 1 {
+		t.Fatalf("ListServers() = %+v, %v", servers, err)
+	}
+
+	updated := servers[0]
+	updated.User = "override-user"
+	if err := repo.UpdateServer(servers[0], updated); err != nil {
+		t.Fatalf("UpdateServer() error = %v", err)
+	}
+
+	saved, err := os.ReadFile(rootConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(saved)
+	userIdx := strings.Index(text, "User override-user")
+	incIdx := strings.Index(text, "Include ")
+	if userIdx < 0 || incIdx < 0 || userIdx > incIdx {
+		t.Fatalf("new host option must be inserted before host-scoped Include:\n%s", text)
+	}
+}
