@@ -39,3 +39,6 @@ dist/
 
 # Binary output
 lazyssh
+
+# Local tool artifacts
+.playwright-mcp/
