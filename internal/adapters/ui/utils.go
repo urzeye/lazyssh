@@ -266,10 +266,10 @@ func addConnectionTimingOptions(parts *[]string, s domain.Server) {
 	addOption(parts, "ConnectTimeout", s.ConnectTimeout)
 	addOption(parts, "ConnectionAttempts", s.ConnectionAttempts)
 	if s.BindAddress != "" {
-		*parts = append(*parts, "-b", s.BindAddress)
+		*parts = append(*parts, "-b", quoteIfNeeded(s.BindAddress))
 	}
 	if s.BindInterface != "" {
-		*parts = append(*parts, "-B", s.BindInterface)
+		*parts = append(*parts, "-B", quoteIfNeeded(s.BindInterface))
 	}
 	addOption(parts, "AddressFamily", s.AddressFamily)
 	addQuotedOption(parts, "IPQoS", s.IPQoS)
@@ -284,13 +284,13 @@ func addConnectionTimingOptions(parts *[]string, s domain.Server) {
 // addPortForwardingOptions adds port forwarding options to the SSH command
 func addPortForwardingOptions(parts *[]string, s domain.Server) {
 	for _, forward := range s.LocalForward {
-		*parts = append(*parts, "-L", forward)
+		*parts = append(*parts, "-L", quoteIfNeeded(forward))
 	}
 	for _, forward := range s.RemoteForward {
-		*parts = append(*parts, "-R", forward)
+		*parts = append(*parts, "-R", quoteIfNeeded(forward))
 	}
 	for _, forward := range s.DynamicForward {
-		*parts = append(*parts, "-D", forward)
+		*parts = append(*parts, "-D", quoteIfNeeded(forward))
 	}
 	if s.ClearAllForwardings != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("ClearAllForwardings=%s", s.ClearAllForwardings))
@@ -340,22 +340,26 @@ func addAuthOptions(parts *[]string, s domain.Server) {
 // addForwardingOptions adds agent and X11 forwarding options to the SSH command
 func addForwardingOptions(parts *[]string, s domain.Server) {
 	if s.ForwardAgent != "" {
-		if s.ForwardAgent == sshYes {
+		if strings.EqualFold(s.ForwardAgent, sshYes) {
 			*parts = append(*parts, "-A")
-		} else if s.ForwardAgent == sshNo {
+		} else if strings.EqualFold(s.ForwardAgent, sshNo) {
 			*parts = append(*parts, "-a")
 		}
 	}
-	if s.ForwardX11 == sshNo {
+	if strings.EqualFold(s.ForwardX11, sshNo) {
 		*parts = append(*parts, "-x")
 		return
 	}
-	if s.ForwardX11Trusted == sshYes {
-		*parts = append(*parts, "-Y")
+	if strings.EqualFold(s.ForwardX11, sshYes) {
+		if strings.EqualFold(s.ForwardX11Trusted, sshYes) {
+			*parts = append(*parts, "-Y")
+			return
+		}
+		*parts = append(*parts, "-X")
 		return
 	}
-	if s.ForwardX11 == sshYes {
-		*parts = append(*parts, "-X")
+	if s.ForwardX11Trusted != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("ForwardX11Trusted=%s", s.ForwardX11Trusted))
 	}
 }
 
@@ -402,7 +406,11 @@ func addCommandExecutionOptions(parts *[]string, s domain.Server) {
 		*parts = append(*parts, "-o", fmt.Sprintf("PermitLocalCommand=%s", s.PermitLocalCommand))
 	}
 	if s.EscapeChar != "" {
-		*parts = append(*parts, "-e", quoteIfNeeded(s.EscapeChar))
+		escapeArg := quoteIfNeeded(s.EscapeChar)
+		if strings.HasPrefix(s.EscapeChar, "~") {
+			escapeArg = shellQuote(s.EscapeChar)
+		}
+		*parts = append(*parts, "-e", escapeArg)
 	}
 }
 
@@ -509,7 +517,7 @@ func addTTYAndLoggingOptions(parts *[]string, s domain.Server) {
 }
 
 func needsShellQuoting(val string) bool {
-	return strings.ContainsAny(val, " \t\"'`$&;|<>()*?[]{}!#\\")
+	return strings.ContainsAny(val, " \t\"'`$&;|<>()*?[]{}!#^\\")
 }
 
 // quoteIfNeeded quotes values containing whitespace or shell metacharacters.

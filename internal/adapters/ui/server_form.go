@@ -67,6 +67,7 @@ type ServerForm struct {
 	mainContainer      *tview.Flex        // Container for form and help panel
 	lastLayoutWidth    int                // Last width used to build responsive form/help layout
 	lastLayoutHelpMode HelpDisplayMode    // Last help mode used to build layout
+	lastHelpWidth      int                // Last width used to render help panel
 	lastTabBarWidth    int                // Last width used to render tab bar
 	lastTabBarTab      string             // Last active tab rendered in tab bar
 }
@@ -166,11 +167,20 @@ func (sf *ServerForm) build() {
 			// Window wide enough - show both form and help
 			sf.mainContainer.AddItem(sf.formPanel, 0, 3, true)
 			sf.mainContainer.AddItem(sf.helpPanel, 0, 2, false)
-			// Refresh help content to recalculate separator width on resize
-			sf.updateHelp(sf.currentField)
 		}
 
 		return x, y, width, height
+	})
+
+	// Update help separator width after Flex assigns the help panel's real bounds.
+	sf.lastHelpWidth = -1
+	sf.helpPanel.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		innerX, innerY, innerWidth, innerHeight := sf.helpPanel.GetInnerRect()
+		if innerWidth != sf.lastHelpWidth {
+			sf.lastHelpWidth = innerWidth
+			sf.updateHelp(sf.currentField)
+		}
+		return innerX, innerY, innerWidth, innerHeight
 	})
 
 	// Initial setup
@@ -544,6 +554,7 @@ func (sf *ServerForm) setupKeyboardShortcuts() {
 
 // setupFormShortcuts sets up keyboard shortcuts for a form
 func (sf *ServerForm) setupFormShortcuts(form *tview.Form) {
+	form.SetCancelFunc(sf.handleCancel)
 	form.SetInputCapture(sf.handleFormShortcut)
 }
 
@@ -575,6 +586,12 @@ func (sf *ServerForm) handleFormShortcut(event *tcell.EventKey) *tcell.EventKey 
 		sf.handleSave()
 		return nil
 	case tcell.KeyEscape:
+		// Let the active form handle Escape so open DropDowns and InputField
+		// autocompletes close first; form.SetCancelFunc triggers handleCancel
+		// when no popup consumes it. Fall back when focus is outside the form.
+		if activeForm, ok := sf.forms[sf.currentTab]; ok && activeForm != nil && activeForm.HasFocus() {
+			return event
+		}
 		sf.handleCancel()
 		return nil
 	case tcell.KeyCtrlH:
@@ -2003,7 +2020,7 @@ func (sf *ServerForm) handleCancel() {
 						if sf.onCancel != nil {
 							sf.onCancel()
 						}
-					case 2: // Cancel
+					default: // Cancel button (2) or Escape (-1)
 						// Restore the form view
 						sf.app.SetRoot(sf.Flex, true)
 					}
