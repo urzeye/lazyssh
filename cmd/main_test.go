@@ -14,7 +14,35 @@
 
 package main
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"go.uber.org/zap"
+)
+
+func TestVersionFlagOutputsVersion(t *testing.T) {
+	cmd := newRootCommand(zap.NewNop().Sugar(), t.TempDir())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--version"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if !strings.Contains(out.String(), version) {
+		t.Fatalf("--version output = %q, want version %q", out.String(), version)
+	}
+}
+
+func TestFormatVersion(t *testing.T) {
+	if got := formatVersion("v2026.11.28", "unknown"); got != "v2026.11.28" {
+		t.Fatalf("formatVersion unknown = %q", got)
+	}
+	if got := formatVersion("v2026.11.28", "abcdef123456"); got != "v2026.11.28 (abcdef1)" {
+		t.Fatalf("formatVersion commit = %q", got)
+	}
+}
 
 func TestEnvBool(t *testing.T) {
 	tests := []struct {

@@ -13,7 +13,7 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I have searched the [existing issues](https://github.com/adembc/lazyssh/issues).
+        - label: I have searched the [existing issues](https://github.com/urzeye/lazyssh/issues).
           required: true
 
   - type: textarea

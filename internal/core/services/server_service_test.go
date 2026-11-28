@@ -126,3 +126,10 @@ func TestFuzzyScoreRejectsNonSubsequence(t *testing.T) {
 		t.Fatalf("fuzzyScore() = %d, want 0", score)
 	}
 }
+
+func TestValidateServerRejectsLeadingHyphenAlias(t *testing.T) {
+	err := validateServer(domain.Server{Alias: "-oProxyCommand=id", Host: "192.0.2.1"})
+	if err == nil {
+		t.Fatal("validateServer accepted alias starting with hyphen")
+	}
+}

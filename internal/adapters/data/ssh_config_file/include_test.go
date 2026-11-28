@@ -37,12 +37,12 @@ func TestListServersLoadsIncludedConfigsRecursively(t *testing.T) {
 		}
 	}
 
-	mainConfig := "IgnoreUnknown UseKeychain\n\nInclude config.d/*.conf\n\nHost main-server\n    HostName main.example.com\n    User root\n"
+	mainConfig := "IgnoreUnknown UseKeychain\n\nHost main-server\n    HostName main.example.com\n    User root\n\nHost *\n    Include config.d/*.conf\n"
 	if err := os.WriteFile(configPath, []byte(mainConfig), 0o600); err != nil {
 		t.Fatalf("write main config: %v", err)
 	}
 
-	includedConfig := "Host included-server\n    HostName 10.0.0.1\n    User deploy\n\nHost main-server\n    HostName shadowed.example.com\n\nInclude nested/*.conf\n"
+	includedConfig := "Include config.d/nested/*.conf\n\nHost included-server\n    HostName 10.0.0.1\n    User deploy\n\nHost main-server\n    HostName shadowed.example.com\n"
 	if err := os.WriteFile(filepath.Join(confDir, "01-work.conf"), []byte(includedConfig), 0o600); err != nil {
 		t.Fatalf("write included config: %v", err)
 	}
@@ -89,6 +89,9 @@ func TestListServersLoadsIncludedConfigsRecursively(t *testing.T) {
 	if !includedServer.Readonly {
 		t.Fatalf("included-server should be read-only")
 	}
+	if includedServer.Host != "10.0.0.1" || includedServer.User != "deploy" {
+		t.Fatalf("included-server Host/User = %q/%q, want 10.0.0.1/deploy", includedServer.Host, includedServer.User)
+	}
 	if includedServer.SourceFile != filepath.Join(confDir, "01-work.conf") {
 		t.Fatalf("included-server SourceFile = %q", includedServer.SourceFile)
 	}
@@ -99,6 +102,9 @@ func TestListServersLoadsIncludedConfigsRecursively(t *testing.T) {
 	}
 	if !nestedServer.Readonly {
 		t.Fatalf("nested-server should be read-only")
+	}
+	if nestedServer.Host != "10.0.0.2" || nestedServer.User != "ops" {
+		t.Fatalf("nested-server Host/User = %q/%q, want 10.0.0.2/ops", nestedServer.Host, nestedServer.User)
 	}
 	if nestedServer.SourceFile != nestedPath {
 		t.Fatalf("nested-server SourceFile = %q, want %q", nestedServer.SourceFile, nestedPath)
@@ -259,6 +265,9 @@ func TestQuotedAliasesAreNormalizedForListingAndDelete(t *testing.T) {
 	server := servers[0]
 	if server.Alias != "TEST-Testing" {
 		t.Fatalf("server Alias = %q, want %q", server.Alias, "TEST-Testing")
+	}
+	if server.Host != "172.16.1.1" || server.User != "root" {
+		t.Fatalf("quoted server Host/User = %q/%q, want 172.16.1.1/root", server.Host, server.User)
 	}
 
 	if err := repo.DeleteServer(server); err != nil {

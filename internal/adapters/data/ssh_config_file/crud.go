@@ -34,7 +34,7 @@ const (
 
 func insertHost(hosts []*ssh_config.Host, host *ssh_config.Host, alias string) []*ssh_config.Host {
 	for i, existing := range hosts {
-		if existing.Implicit || !existing.Matches(alias) {
+		if existing.Implicit || !hostMatchesAlias(existing, alias) {
 			continue
 		}
 		// OpenSSH takes the first value, so specific hosts must precede defaults.
@@ -140,6 +140,18 @@ func (r *Repository) addKVNodeIfNotEmpty(host *ssh_config.Host, key, value strin
 	r.insertKVNodeAfterLastKV(host, kvNode)
 }
 
+// matchBoundaryIndex returns the index of the first Match directive in nodes,
+// or len(nodes) if none exists. The ssh_config parser attaches Match blocks to
+// the preceding Host's Nodes slice; host edits must not cross that boundary.
+func matchBoundaryIndex(nodes []ssh_config.Node) int {
+	for i, node := range nodes {
+		if kv, ok := node.(*ssh_config.KV); ok && strings.EqualFold(kv.Key, "match") {
+			return i
+		}
+	}
+	return len(nodes)
+}
+
 // insertKVNodeAfterLastKV inserts a KV node immediately after the last existing KV node in the host.
 // This preserves any trailing non-KV nodes (blank lines, comments) that may exist after the host's
 // configuration block, preventing formatting shifts when adding new fields to a host entry.
@@ -148,22 +160,25 @@ func (r *Repository) addKVNodeIfNotEmpty(host *ssh_config.Host, key, value strin
 // this function ensures new fields are inserted before those blank lines, maintaining the
 // visual separation between host blocks.
 func (r *Repository) insertKVNodeAfterLastKV(host *ssh_config.Host, kvNode *ssh_config.KV) {
-	// STEP 1: Find the last KV node (search backwards)
+	boundary := matchBoundaryIndex(host.Nodes)
+
+	// STEP 1: Find the last KV node before any Match boundary (search backwards),
+	// skipping Include directives so host-local options stay ahead of included defaults.
 	lastKVIndex := -1
-	for i := len(host.Nodes) - 1; i >= 0; i-- {
-		if _, ok := host.Nodes[i].(*ssh_config.KV); ok {
+	for i := boundary - 1; i >= 0; i-- {
+		if kv, ok := host.Nodes[i].(*ssh_config.KV); ok && !strings.EqualFold(kv.Key, "include") {
 			lastKVIndex = i
 			break
 		}
 	}
 
-	// STEP 2: Handle case where no KV nodes exist
+	// STEP 2: Handle case where no KV nodes exist before the Match boundary
 	if lastKVIndex == -1 {
 		if len(host.Nodes) == 0 {
 			// Case A: Empty host - just append
 			host.Nodes = append(host.Nodes, kvNode)
 		} else {
-			// Case B: Only comments/blanks exist - prepend before them
+			// Case B: Only comments/blanks or Match nodes exist - prepend before them
 			host.Nodes = append([]ssh_config.Node{kvNode}, host.Nodes...)
 		}
 		return
@@ -178,14 +193,15 @@ func (r *Repository) insertKVNodeAfterLastKV(host *ssh_config.Host, kvNode *ssh_
 		return
 	}
 
-	// Case D: Last KV has trailing nodes (blanks/comments) - insert between them
+	// Case D: Last KV has trailing nodes (blanks/comments/Match) - insert between them
 	host.Nodes = append(host.Nodes[:insertAt], append([]ssh_config.Node{kvNode}, host.Nodes[insertAt:]...)...)
 }
 
-// removeNodesByKey removes all nodes with the specified key from the nodes slice
+// removeNodesByKey removes all nodes with the specified key before any Match boundary.
 func removeNodesByKey(nodes []ssh_config.Node, key string) []ssh_config.Node {
+	boundary := matchBoundaryIndex(nodes)
 	filtered := make([]ssh_config.Node, 0, len(nodes))
-	for _, node := range nodes {
+	for _, node := range nodes[:boundary] {
 		if kv, ok := node.(*ssh_config.KV); ok {
 			if strings.EqualFold(kv.Key, key) {
 				continue // skip nodes with matching key
@@ -193,88 +209,91 @@ func removeNodesByKey(nodes []ssh_config.Node, key string) []ssh_config.Node {
 		}
 		filtered = append(filtered, node)
 	}
-	return filtered
+	return append(filtered, nodes[boundary:]...)
+}
+
+type hostOptionUpdate struct {
+	key     string
+	aliases []string
+	value   string
 }
 
 // updateHostNodes updates the nodes of an existing host with new server details.
 func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Server) {
-	// OpenSSH uses the first proxy directive. Keep existing directive positions,
-	// and insert Jump before Command when both are new, independently of map order.
-	r.setHostOption(host, "proxyjump", newServer.ProxyJump)
-	r.setHostOption(host, "proxycommand", newServer.ProxyCommand)
 	// Handle Port - include if explicitly set (even if it's 22)
 	portValue := ""
 	if newServer.Port != 0 {
 		portValue = fmt.Sprintf("%d", newServer.Port)
 	}
 
-	updates := map[string]string{
-		"hostname":                        newServer.Host,
-		"user":                            newServer.User,
-		"port":                            portValue,
-		"remotecommand":                   newServer.RemoteCommand,
-		"requesttty":                      newServer.RequestTTY,
-		"sessiontype":                     newServer.SessionType,
-		"connecttimeout":                  newServer.ConnectTimeout,
-		"connectionattempts":              newServer.ConnectionAttempts,
-		"bindaddress":                     newServer.BindAddress,
-		"bindinterface":                   newServer.BindInterface,
-		"addressfamily":                   newServer.AddressFamily,
-		"exitonforwardfailure":            newServer.ExitOnForwardFailure,
-		"ipqos":                           newServer.IPQoS,
-		"canonicalizehostname":            newServer.CanonicalizeHostname,
-		"canonicaldomains":                newServer.CanonicalDomains,
-		"canonicalizefallbacklocal":       newServer.CanonicalizeFallbackLocal,
-		"canonicalizemaxdots":             newServer.CanonicalizeMaxDots,
-		"canonicalizepermittedcnames":     newServer.CanonicalizePermittedCNAMEs,
-		"clearallforwardings":             newServer.ClearAllForwardings,
-		"gatewayports":                    newServer.GatewayPorts,
-		"pubkeyauthentication":            newServer.PubkeyAuthentication,
-		"passwordauthentication":          newServer.PasswordAuthentication,
-		"preferredauthentications":        newServer.PreferredAuthentications,
-		"pubkeyacceptedalgorithms":        newServer.PubkeyAcceptedAlgorithms,
-		"pubkeyacceptedkeytypes":          newServer.PubkeyAcceptedAlgorithms, // Deprecated alias (since OpenSSH 8.5)
-		"hostbasedacceptedalgorithms":     newServer.HostbasedAcceptedAlgorithms,
-		"hostbasedkeytypes":               newServer.HostbasedAcceptedAlgorithms, // Deprecated alias (since OpenSSH 8.5)
-		"hostbasedacceptedkeytypes":       newServer.HostbasedAcceptedAlgorithms, // Deprecated alias (since OpenSSH 8.5)
-		"identitiesonly":                  newServer.IdentitiesOnly,
-		"addkeystoagent":                  newServer.AddKeysToAgent,
-		"identityagent":                   newServer.IdentityAgent,
-		"kbdinteractiveauthentication":    newServer.KbdInteractiveAuthentication,
-		"challengeresponseauthentication": newServer.KbdInteractiveAuthentication, // Deprecated alias
-		"numberofpasswordprompts":         newServer.NumberOfPasswordPrompts,
-		"forwardagent":                    newServer.ForwardAgent,
-		"forwardx11":                      newServer.ForwardX11,
-		"forwardx11trusted":               newServer.ForwardX11Trusted,
-		"controlmaster":                   newServer.ControlMaster,
-		"controlpath":                     newServer.ControlPath,
-		"controlpersist":                  newServer.ControlPersist,
-		"serveraliveinterval":             newServer.ServerAliveInterval,
-		"serveralivecountmax":             newServer.ServerAliveCountMax,
-		"compression":                     newServer.Compression,
-		"tcpkeepalive":                    newServer.TCPKeepAlive,
-		"batchmode":                       newServer.BatchMode,
-		"stricthostkeychecking":           newServer.StrictHostKeyChecking,
-		"checkhostip":                     newServer.CheckHostIP,
-		"fingerprinthash":                 newServer.FingerprintHash,
-		"userknownhostsfile":              newServer.UserKnownHostsFile,
-		"hostkeyalgorithms":               newServer.HostKeyAlgorithms,
-		"macs":                            newServer.MACs,
-		"ciphers":                         newServer.Ciphers,
-		"kexalgorithms":                   newServer.KexAlgorithms,
-		"verifyhostkeydns":                newServer.VerifyHostKeyDNS,
-		"updatehostkeys":                  newServer.UpdateHostKeys,
-		"hashknownhosts":                  newServer.HashKnownHosts,
-		"visualhostkey":                   newServer.VisualHostKey,
-		"localcommand":                    newServer.LocalCommand,
-		"permitlocalcommand":              newServer.PermitLocalCommand,
-		"escapechar":                      newServer.EscapeChar,
-		"loglevel":                        newServer.LogLevel,
+	// OpenSSH uses the first value for single-value directives, including proxy
+	// directives. Keeping updates in an ordered slice preserves existing node
+	// positions and makes new-host serialization deterministic.
+	updates := []hostOptionUpdate{
+		{key: "hostname", value: newServer.Host},
+		{key: "user", value: newServer.User},
+		{key: "port", value: portValue},
+		{key: "proxyjump", value: newServer.ProxyJump},
+		{key: "proxycommand", value: newServer.ProxyCommand},
+		{key: "remotecommand", value: newServer.RemoteCommand},
+		{key: "requesttty", value: newServer.RequestTTY},
+		{key: "sessiontype", value: newServer.SessionType},
+		{key: "connecttimeout", value: newServer.ConnectTimeout},
+		{key: "connectionattempts", value: newServer.ConnectionAttempts},
+		{key: "bindaddress", value: newServer.BindAddress},
+		{key: "bindinterface", value: newServer.BindInterface},
+		{key: "addressfamily", value: newServer.AddressFamily},
+		{key: "exitonforwardfailure", value: newServer.ExitOnForwardFailure},
+		{key: "ipqos", value: newServer.IPQoS},
+		{key: "canonicalizehostname", value: newServer.CanonicalizeHostname},
+		{key: "canonicaldomains", value: newServer.CanonicalDomains},
+		{key: "canonicalizefallbacklocal", value: newServer.CanonicalizeFallbackLocal},
+		{key: "canonicalizemaxdots", value: newServer.CanonicalizeMaxDots},
+		{key: "canonicalizepermittedcnames", value: newServer.CanonicalizePermittedCNAMEs},
+		{key: "clearallforwardings", value: newServer.ClearAllForwardings},
+		{key: "gatewayports", value: newServer.GatewayPorts},
+		{key: "pubkeyauthentication", value: newServer.PubkeyAuthentication},
+		{key: "passwordauthentication", value: newServer.PasswordAuthentication},
+		{key: "preferredauthentications", value: newServer.PreferredAuthentications},
+		{key: "pubkeyacceptedalgorithms", aliases: []string{"pubkeyacceptedkeytypes"}, value: newServer.PubkeyAcceptedAlgorithms},
+		{key: "hostbasedacceptedalgorithms", aliases: []string{"hostbasedkeytypes", "hostbasedacceptedkeytypes"}, value: newServer.HostbasedAcceptedAlgorithms},
+		{key: "identitiesonly", value: newServer.IdentitiesOnly},
+		{key: "addkeystoagent", value: newServer.AddKeysToAgent},
+		{key: "identityagent", value: newServer.IdentityAgent},
+		{key: "kbdinteractiveauthentication", aliases: []string{"challengeresponseauthentication"}, value: newServer.KbdInteractiveAuthentication},
+		{key: "numberofpasswordprompts", value: newServer.NumberOfPasswordPrompts},
+		{key: "forwardagent", value: newServer.ForwardAgent},
+		{key: "forwardx11", value: newServer.ForwardX11},
+		{key: "forwardx11trusted", value: newServer.ForwardX11Trusted},
+		{key: "controlmaster", value: newServer.ControlMaster},
+		{key: "controlpath", value: newServer.ControlPath},
+		{key: "controlpersist", value: newServer.ControlPersist},
+		{key: "serveraliveinterval", value: newServer.ServerAliveInterval},
+		{key: "serveralivecountmax", value: newServer.ServerAliveCountMax},
+		{key: "compression", value: newServer.Compression},
+		{key: "tcpkeepalive", value: newServer.TCPKeepAlive},
+		{key: "batchmode", value: newServer.BatchMode},
+		{key: "stricthostkeychecking", value: newServer.StrictHostKeyChecking},
+		{key: "checkhostip", value: newServer.CheckHostIP},
+		{key: "fingerprinthash", value: newServer.FingerprintHash},
+		{key: "userknownhostsfile", value: newServer.UserKnownHostsFile},
+		{key: "hostkeyalgorithms", value: newServer.HostKeyAlgorithms},
+		{key: "macs", value: newServer.MACs},
+		{key: "ciphers", value: newServer.Ciphers},
+		{key: "kexalgorithms", value: newServer.KexAlgorithms},
+		{key: "verifyhostkeydns", value: newServer.VerifyHostKeyDNS},
+		{key: "updatehostkeys", value: newServer.UpdateHostKeys},
+		{key: "hashknownhosts", value: newServer.HashKnownHosts},
+		{key: "visualhostkey", value: newServer.VisualHostKey},
+		{key: "localcommand", value: newServer.LocalCommand},
+		{key: "permitlocalcommand", value: newServer.PermitLocalCommand},
+		{key: "escapechar", value: newServer.EscapeChar},
+		{key: "loglevel", value: newServer.LogLevel},
 	}
 
 	// Update or remove nodes based on value
-	for key, value := range updates {
-		r.setHostOption(host, key, value)
+	for _, update := range updates {
+		r.setHostOptionGroup(host, update.key, update.aliases, update.value)
 	}
 
 	// Replace multi-value entries entirely to reflect the new state
@@ -311,46 +330,64 @@ func (r *Repository) updateHostNodes(host *ssh_config.Host, newServer domain.Ser
 	}
 }
 
-func (r *Repository) setHostOption(host *ssh_config.Host, key, value string) {
-	if value == "" {
-		r.removeKVNode(host, key)
-		return
+func matchesOptionGroup(nodeKey, canonical string, aliases []string) bool {
+	if strings.EqualFold(nodeKey, canonical) {
+		return true
 	}
-	r.updateOrAddKVNode(host, key, value)
-}
-
-// updateOrAddKVNode updates an existing key-value node or adds a new one if it doesn't exist.
-func (r *Repository) updateOrAddKVNode(host *ssh_config.Host, key, newValue string) {
-	// Try to update existing node
-	for _, node := range host.Nodes {
-		kvNode, ok := node.(*ssh_config.KV)
-		if ok && strings.EqualFold(kvNode.Key, key) {
-			kvNode.Value = newValue
-			return
+	for _, alias := range aliases {
+		if strings.EqualFold(nodeKey, alias) {
+			return true
 		}
 	}
-
-	// Add new node if not found
-	kvNode := &ssh_config.KV{
-		Key:          r.getProperKeyCase(key),
-		Value:        newValue,
-		LeadingSpace: 4,
-	}
-	r.insertKVNodeAfterLastKV(host, kvNode)
+	return false
 }
 
-// removeKVNode removes a key-value node from the host if it exists.
-func (r *Repository) removeKVNode(host *ssh_config.Host, key string) {
-	filtered := make([]ssh_config.Node, 0, len(host.Nodes))
-	for _, node := range host.Nodes {
-		if kvNode, ok := node.(*ssh_config.KV); ok {
-			if strings.EqualFold(kvNode.Key, key) {
-				continue // Skip this node (remove it)
+func (r *Repository) setHostOptionGroup(host *ssh_config.Host, key string, aliases []string, value string) {
+	boundary := matchBoundaryIndex(host.Nodes)
+	hostNodes := host.Nodes[:boundary]
+	matchTail := host.Nodes[boundary:]
+
+	if value == "" {
+		filtered := make([]ssh_config.Node, 0, len(host.Nodes))
+		for _, node := range hostNodes {
+			if kvNode, ok := node.(*ssh_config.KV); ok && matchesOptionGroup(kvNode.Key, key, aliases) {
+				continue
 			}
+			filtered = append(filtered, node)
+		}
+		filtered = append(filtered, matchTail...)
+		host.Nodes = filtered
+		return
+	}
+
+	// Update the first matching directive (canonical or deprecated alias) in place
+	// and remove any redundant duplicate directives in the same group, without
+	// crossing into any trailing Match section attached to host.Nodes.
+	updated := false
+	filtered := make([]ssh_config.Node, 0, len(host.Nodes))
+	for _, node := range hostNodes {
+		if kvNode, ok := node.(*ssh_config.KV); ok && matchesOptionGroup(kvNode.Key, key, aliases) {
+			if !updated {
+				kvNode.Value = value
+				filtered = append(filtered, kvNode)
+				updated = true
+			}
+			continue
 		}
 		filtered = append(filtered, node)
 	}
+	filtered = append(filtered, matchTail...)
 	host.Nodes = filtered
+	if updated {
+		return
+	}
+
+	kvNode := &ssh_config.KV{
+		Key:          r.getProperKeyCase(key),
+		Value:        value,
+		LeadingSpace: 4,
+	}
+	r.insertKVNodeAfterLastKV(host, kvNode)
 }
 
 // getProperKeyCase returns the proper case for known SSH config keys.
@@ -507,14 +544,27 @@ func (r *Repository) convertCLIForwardToConfigFormat(forward string) string {
 	return forward
 }
 
-// removeHostByAlias removes a host by its alias from the list of hosts.
-func (r *Repository) removeHostByAlias(hosts []*ssh_config.Host, alias string) []*ssh_config.Host {
+// removeHostByAlias removes a host by its alias from the list of hosts while
+// preserving any trailing Match section attached to that host by the parser.
+func (r *Repository) removeHostByAlias(hosts []*ssh_config.Host, alias string) ([]*ssh_config.Host, bool) {
 	for i, host := range hosts {
 		if r.hostContainsPattern(host, alias) {
-			return append(hosts[:i], hosts[i+1:]...)
+			boundary := matchBoundaryIndex(host.Nodes)
+			if boundary < len(host.Nodes) {
+				if i > 0 {
+					hosts[i-1].Nodes = append(hosts[i-1].Nodes, host.Nodes[boundary:]...)
+				} else {
+					hosts[0] = &ssh_config.Host{
+						Implicit: true,
+						Nodes:    host.Nodes[boundary:],
+					}
+					return hosts, true
+				}
+			}
+			return append(hosts[:i], hosts[i+1:]...), true
 		}
 	}
-	return hosts
+	return hosts, false
 }
 
 func normalizeIdentityFilePath(path string) string {

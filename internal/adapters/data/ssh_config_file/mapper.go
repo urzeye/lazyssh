@@ -23,70 +23,71 @@ import (
 	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
-var effectiveSingleValueKeys = []string{
-	"HostName",
-	"User",
-	"Port",
-	"ProxyCommand",
-	"ProxyJump",
-	"RemoteCommand",
-	"RequestTTY",
-	"SessionType",
-	"ConnectTimeout",
-	"ConnectionAttempts",
-	"BindAddress",
-	"BindInterface",
-	"AddressFamily",
-	"ExitOnForwardFailure",
-	"IPQoS",
-	"CanonicalizeHostname",
-	"CanonicalDomains",
-	"CanonicalizeFallbackLocal",
-	"CanonicalizeMaxDots",
-	"CanonicalizePermittedCNAMEs",
-	"ClearAllForwardings",
-	"GatewayPorts",
-	"ForwardAgent",
-	"ForwardX11",
-	"ForwardX11Trusted",
-	"PubkeyAuthentication",
-	"PubkeyAcceptedAlgorithms",
-	"PubkeyAcceptedKeyTypes",
-	"HostbasedAcceptedAlgorithms",
-	"HostbasedKeyTypes",
-	"HostbasedAcceptedKeyTypes",
-	"PasswordAuthentication",
-	"PreferredAuthentications",
-	"IdentitiesOnly",
-	"AddKeysToAgent",
-	"IdentityAgent",
-	"KbdInteractiveAuthentication",
-	"ChallengeResponseAuthentication",
-	"NumberOfPasswordPrompts",
-	"ControlMaster",
-	"ControlPath",
-	"ControlPersist",
-	"ServerAliveInterval",
-	"ServerAliveCountMax",
-	"Compression",
-	"TCPKeepAlive",
-	"BatchMode",
-	"StrictHostKeyChecking",
-	"CheckHostIP",
-	"FingerprintHash",
-	"UserKnownHostsFile",
-	"HostKeyAlgorithms",
-	"MACs",
-	"Ciphers",
-	"KexAlgorithms",
-	"VerifyHostKeyDNS",
-	"UpdateHostKeys",
-	"HashKnownHosts",
-	"VisualHostKey",
-	"LocalCommand",
-	"PermitLocalCommand",
-	"EscapeChar",
-	"LogLevel",
+type effectiveKeyGroup struct {
+	canonical string
+	aliases   []string
+}
+
+var effectiveSingleValueGroups = []effectiveKeyGroup{
+	{canonical: "HostName"},
+	{canonical: "User"},
+	{canonical: "Port"},
+	{canonical: "ProxyCommand"},
+	{canonical: "ProxyJump"},
+	{canonical: "RemoteCommand"},
+	{canonical: "RequestTTY"},
+	{canonical: "SessionType"},
+	{canonical: "ConnectTimeout"},
+	{canonical: "ConnectionAttempts"},
+	{canonical: "BindAddress"},
+	{canonical: "BindInterface"},
+	{canonical: "AddressFamily"},
+	{canonical: "ExitOnForwardFailure"},
+	{canonical: "IPQoS"},
+	{canonical: "CanonicalizeHostname"},
+	{canonical: "CanonicalDomains"},
+	{canonical: "CanonicalizeFallbackLocal"},
+	{canonical: "CanonicalizeMaxDots"},
+	{canonical: "CanonicalizePermittedCNAMEs"},
+	{canonical: "ClearAllForwardings"},
+	{canonical: "GatewayPorts"},
+	{canonical: "ForwardAgent"},
+	{canonical: "ForwardX11"},
+	{canonical: "ForwardX11Trusted"},
+	{canonical: "PubkeyAuthentication"},
+	{canonical: "PubkeyAcceptedAlgorithms", aliases: []string{"PubkeyAcceptedKeyTypes"}},
+	{canonical: "HostbasedAcceptedAlgorithms", aliases: []string{"HostbasedKeyTypes", "HostbasedAcceptedKeyTypes"}},
+	{canonical: "PasswordAuthentication"},
+	{canonical: "PreferredAuthentications"},
+	{canonical: "IdentitiesOnly"},
+	{canonical: "AddKeysToAgent"},
+	{canonical: "IdentityAgent"},
+	{canonical: "KbdInteractiveAuthentication", aliases: []string{"ChallengeResponseAuthentication"}},
+	{canonical: "NumberOfPasswordPrompts"},
+	{canonical: "ControlMaster"},
+	{canonical: "ControlPath"},
+	{canonical: "ControlPersist"},
+	{canonical: "ServerAliveInterval"},
+	{canonical: "ServerAliveCountMax"},
+	{canonical: "Compression"},
+	{canonical: "TCPKeepAlive"},
+	{canonical: "BatchMode"},
+	{canonical: "StrictHostKeyChecking"},
+	{canonical: "CheckHostIP"},
+	{canonical: "FingerprintHash"},
+	{canonical: "UserKnownHostsFile"},
+	{canonical: "HostKeyAlgorithms"},
+	{canonical: "MACs"},
+	{canonical: "Ciphers"},
+	{canonical: "KexAlgorithms"},
+	{canonical: "VerifyHostKeyDNS"},
+	{canonical: "UpdateHostKeys"},
+	{canonical: "HashKnownHosts"},
+	{canonical: "VisualHostKey"},
+	{canonical: "LocalCommand"},
+	{canonical: "PermitLocalCommand"},
+	{canonical: "EscapeChar"},
+	{canonical: "LogLevel"},
 }
 
 var effectiveMultiValueKeys = []string{
@@ -98,47 +99,49 @@ var effectiveMultiValueKeys = []string{
 	"SetEnv",
 }
 
-// toDomainServersFromConfig converts a parsed SSH config into domain servers and
-// records where each server came from so the UI can protect include-managed
-// entries from destructive edits.
-func (r *Repository) toDomainServersFromConfig(cfg *ssh_config.Config, effectiveCfg *ssh_config.Config, sourceFile string, readonly bool) []domain.Server {
-	servers := make([]domain.Server, 0, len(cfg.Hosts))
-	for _, host := range cfg.Hosts {
-		aliases := make([]string, 0, len(host.Patterns))
-
-		for _, pattern := range host.Patterns {
-			alias := normalizeHostAlias(pattern.String())
-			// Skip if alias contains wildcards (not a concrete Host)
-			if strings.ContainsAny(alias, "!*?[]") {
-				continue
-			}
-			aliases = append(aliases, alias)
-		}
-		if len(aliases) == 0 {
+func discoverHostAliases(entry discoveredHost) []string {
+	aliases := make([]string, 0, len(entry.host.Patterns))
+	seenInHost := make(map[string]struct{}, len(entry.host.Patterns))
+	for _, pattern := range entry.host.Patterns {
+		alias := normalizeHostAlias(pattern.String())
+		// Skip if alias contains wildcards or negation (not a concrete Host)
+		if alias == "" || strings.ContainsAny(alias, "!*?[]") {
 			continue
 		}
-		server := domain.Server{
-			Alias:         aliases[0],
-			Aliases:       aliases,
-			Port:          22,
-			IdentityFiles: []string{},
-			SourceFile:    sourceFile,
-			Readonly:      readonly,
+		// Only discover aliases that satisfy all enclosing conditional Include guards.
+		if !guardsMatchAlias(entry.guards, alias) {
+			continue
 		}
-
-		if effectiveCfg != nil {
-			if err := r.applyEffectiveConfig(&server, effectiveCfg); err != nil {
-				r.logger.Warnf("failed to apply effective config for %s: %v", server.Alias, err)
-				r.applyHostNodes(&server, host)
-			}
-		} else {
-			r.applyHostNodes(&server, host)
+		if _, dup := seenInHost[alias]; dup {
+			continue
 		}
+		seenInHost[alias] = struct{}{}
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
 
-		servers = append(servers, server)
+func (r *Repository) toDomainServerFromAliases(entry discoveredHost, aliases []string, effective []effectiveBlock, readonly bool) (domain.Server, bool) {
+	if len(aliases) == 0 {
+		return domain.Server{}, false
 	}
 
-	return servers
+	server := domain.Server{
+		Alias:         aliases[0],
+		Aliases:       aliases,
+		Port:          22,
+		IdentityFiles: []string{},
+		SourceFile:    entry.sourceFile,
+		Readonly:      readonly,
+	}
+
+	if len(effective) > 0 {
+		r.applyEffectiveBlocks(&server, effective)
+	} else {
+		r.applyHostNodes(&server, entry.host)
+	}
+
+	return server, true
 }
 
 func (r *Repository) applyHostNodes(server *domain.Server, host *ssh_config.Host) {
@@ -147,34 +150,127 @@ func (r *Repository) applyHostNodes(server *domain.Server, host *ssh_config.Host
 		if !ok {
 			continue
 		}
+		if strings.EqualFold(kvNode.Key, "match") {
+			break
+		}
 
 		r.mapKVToServer(server, kvNode)
 	}
 }
 
-func (r *Repository) applyEffectiveConfig(server *domain.Server, cfg *ssh_config.Config) error {
-	for _, key := range effectiveSingleValueKeys {
-		value, err := cfg.Get(server.Alias, key)
-		if err != nil {
-			return err
-		}
-		if value == "" {
+func (r *Repository) applyEffectiveBlocks(server *domain.Server, blocks []effectiveBlock) {
+	matchingNodes := make([]*ssh_config.KV, 0, 16)
+	for _, block := range blocks {
+		if !effectiveBlockMatches(block, server.Alias) {
 			continue
 		}
-		r.mapKVToServer(server, &ssh_config.KV{Key: key, Value: value})
+		matchingNodes = append(matchingNodes, block.nodes...)
+	}
+
+	for _, group := range effectiveSingleValueGroups {
+		if value, ok := firstMatchingNodeValue(matchingNodes, group); ok {
+			r.mapKVToServer(server, &ssh_config.KV{Key: group.canonical, Value: value})
+		}
 	}
 
 	for _, key := range effectiveMultiValueKeys {
-		values, err := cfg.GetAll(server.Alias, key)
-		if err != nil {
-			return err
-		}
-		for _, value := range values {
-			r.mapKVToServer(server, &ssh_config.KV{Key: key, Value: value})
+		for _, node := range matchingNodes {
+			if strings.EqualFold(node.Key, key) && node.Value != "" {
+				r.mapKVToServer(server, node)
+			}
 		}
 	}
+}
 
-	return nil
+func guardsMatchAlias(guards []*ssh_config.Host, alias string) bool {
+	for _, guard := range guards {
+		if !hostMatchesAlias(guard, alias) {
+			return false
+		}
+	}
+	return true
+}
+
+func effectiveBlockMatches(block effectiveBlock, alias string) bool {
+	return guardsMatchAlias(block.guards, alias) && hostMatchesAlias(block.host, alias)
+}
+
+func firstMatchingNodeValue(nodes []*ssh_config.KV, group effectiveKeyGroup) (string, bool) {
+	for _, node := range nodes {
+		if node.Value == "" {
+			continue
+		}
+		if strings.EqualFold(node.Key, group.canonical) {
+			return node.Value, true
+		}
+		for _, aliasKey := range group.aliases {
+			if strings.EqualFold(node.Key, aliasKey) {
+				return node.Value, true
+			}
+		}
+	}
+	return "", false
+}
+
+func hostMatchesAlias(host *ssh_config.Host, alias string) bool {
+	if host == nil {
+		return false
+	}
+	if host.Implicit {
+		return true
+	}
+
+	matched := false
+	for _, pattern := range host.Patterns {
+		raw := strings.TrimSpace(pattern.String())
+		negated := false
+		if strings.HasPrefix(raw, "!") {
+			negated = true
+			raw = raw[1:]
+		}
+		normalized := normalizeHostAlias(raw)
+		if !negated && strings.HasPrefix(normalized, "!") {
+			negated = true
+			normalized = normalized[1:]
+		}
+		if normalized == "" {
+			continue
+		}
+		if matchSSHPattern(normalized, alias) {
+			if negated {
+				return false
+			}
+			matched = true
+		}
+	}
+	return matched
+}
+
+// matchSSHPattern implements OpenSSH '*' and '?' wildcard matching.
+func matchSSHPattern(pattern, target string) bool {
+	p, t := 0, 0
+	starIdx, matchIdx := -1, 0
+	for t < len(target) {
+		switch {
+		case p < len(pattern) && (pattern[p] == '?' || pattern[p] == target[t]):
+			p++
+			t++
+		case p < len(pattern) && pattern[p] == '*':
+			starIdx = p
+			matchIdx = t
+			p++
+		case starIdx != -1:
+			p = starIdx + 1
+			matchIdx++
+			t = matchIdx
+		default:
+			return false
+		}
+	}
+	for p < len(pattern) && pattern[p] == '*' {
+		p++
+	}
+	return p == len(pattern)
 }
 
 func normalizeHostAlias(alias string) string {

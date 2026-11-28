@@ -71,7 +71,7 @@ func ParseSSHCommand(text string) (domain.Server, error) {
 		}
 		for j := 1; j < len(arg); j++ {
 			flag := arg[j]
-			if strings.ContainsRune("pilJLRDoboecmB", rune(flag)) {
+			if strings.ContainsRune("pilJLRDobecmB", rune(flag)) {
 				value := arg[j+1:]
 				if value == "" {
 					i++
@@ -246,9 +246,10 @@ func applyPastedSSHOption(server *domain.Server, key, value string) error {
 		"canonicalizefallbacklocal": &server.CanonicalizeFallbackLocal, "canonicalizemaxdots": &server.CanonicalizeMaxDots, "canonicalizepermittedcnames": &server.CanonicalizePermittedCNAMEs,
 		"clearallforwardings": &server.ClearAllForwardings, "gatewayports": &server.GatewayPorts,
 		"pubkeyauthentication": &server.PubkeyAuthentication, "pubkeyacceptedalgorithms": &server.PubkeyAcceptedAlgorithms, "pubkeyacceptedkeytypes": &server.PubkeyAcceptedAlgorithms,
-		"hostbasedacceptedalgorithms": &server.HostbasedAcceptedAlgorithms, "identitiesonly": &server.IdentitiesOnly,
+		"hostbasedacceptedalgorithms": &server.HostbasedAcceptedAlgorithms, "hostbasedkeytypes": &server.HostbasedAcceptedAlgorithms, "hostbasedacceptedkeytypes": &server.HostbasedAcceptedAlgorithms,
+		"identitiesonly": &server.IdentitiesOnly,
 		"addkeystoagent": &server.AddKeysToAgent, "identityagent": &server.IdentityAgent,
-		"passwordauthentication": &server.PasswordAuthentication, "kbdinteractiveauthentication": &server.KbdInteractiveAuthentication, "numberofpasswordprompts": &server.NumberOfPasswordPrompts, "preferredauthentications": &server.PreferredAuthentications,
+		"passwordauthentication": &server.PasswordAuthentication, "kbdinteractiveauthentication": &server.KbdInteractiveAuthentication, "challengeresponseauthentication": &server.KbdInteractiveAuthentication, "numberofpasswordprompts": &server.NumberOfPasswordPrompts, "preferredauthentications": &server.PreferredAuthentications,
 		"forwardagent": &server.ForwardAgent, "forwardx11": &server.ForwardX11, "forwardx11trusted": &server.ForwardX11Trusted,
 		"controlmaster": &server.ControlMaster, "controlpath": &server.ControlPath, "controlpersist": &server.ControlPersist,
 		"serveraliveinterval": &server.ServerAliveInterval, "serveralivecountmax": &server.ServerAliveCountMax, "compression": &server.Compression, "tcpkeepalive": &server.TCPKeepAlive, "batchmode": &server.BatchMode,
@@ -306,6 +307,12 @@ func splitSSHCommandForPlatform(text string, windows bool) ([]string, error) {
 			continue
 		}
 		if quote != 0 {
+			if windows && quote == '"' && r == '\\' && i+1 < len(runes) && runes[i+1] == '"' {
+				token.WriteRune('"')
+				i++
+				started = true
+				continue
+			}
 			if r == quote {
 				if windows && quote == '\'' && i+1 < len(runes) && runes[i+1] == '\'' {
 					token.WriteRune(r)

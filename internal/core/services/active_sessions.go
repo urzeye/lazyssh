@@ -15,7 +15,7 @@
 package services
 
 import (
-	"path/filepath"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,7 +87,7 @@ func parseProcessLine(line string) (processInfo, bool) {
 }
 
 func parseSSHProcess(process processInfo) (domain.ActiveSession, bool) {
-	if len(process.Args) == 0 || filepath.Base(process.Args[0]) != "ssh" {
+	if len(process.Args) == 0 || !isSSHExecutable(process.Args[0]) {
 		return domain.ActiveSession{}, false
 	}
 
@@ -105,6 +105,11 @@ func parseSSHProcess(process processInfo) (domain.ActiveSession, bool) {
 	}, true
 }
 
+func isSSHExecutable(arg string) bool {
+	base := path.Base(strings.ReplaceAll(strings.TrimSpace(arg), "\\", "/"))
+	return strings.EqualFold(base, "ssh") || strings.EqualFold(base, "ssh.exe")
+}
+
 func parseSSHDestination(args []string) (string, []string) {
 	forwards := make([]string, 0)
 
@@ -119,51 +124,47 @@ func parseSSHDestination(args []string) (string, []string) {
 			}
 			return "", forwards
 		}
-		if !strings.HasPrefix(arg, "-") {
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			return arg, forwards
 		}
-
-		if forwarding, ok := extractForwardSpec(arg); ok {
-			if forwarding == "" && index+1 < len(args) {
-				forwarding = args[index+1]
-				index++
-			}
-			forwards = append(forwards, forwarding)
+		if strings.HasPrefix(arg, "--") {
 			continue
 		}
 
-		if optionConsumesNextArg(arg) && index+1 < len(args) {
-			index++
+		for j := 1; j < len(arg); j++ {
+			ch := arg[j]
+			// Non-session inspection flags (config dump, version, query) are not active sessions.
+			if ch == 'G' || ch == 'V' || ch == 'Q' {
+				return "", nil
+			}
+			if ch == 'L' || ch == 'R' || ch == 'D' {
+				forwarding := arg[j+1:]
+				if forwarding == "" && index+1 < len(args) {
+					forwarding = args[index+1]
+					index++
+				}
+				if forwarding != "" {
+					forwards = append(forwards, forwarding)
+				}
+				break
+			}
+			if strings.ContainsRune("BbcEeFIiJlmoOpPSWw", rune(ch)) {
+				if j+1 == len(arg) && index+1 < len(args) {
+					index++
+				}
+				break
+			}
 		}
 	}
 
 	return "", forwards
 }
 
-func extractForwardSpec(arg string) (string, bool) {
-	for _, flag := range []string{"-L", "-R", "-D"} {
-		if arg == flag {
-			return "", true
-		}
-		if strings.HasPrefix(arg, flag) {
-			return arg[2:], true
-		}
-	}
-	return "", false
-}
-
-func optionConsumesNextArg(arg string) bool {
-	if len(arg) < 2 || !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") {
-		return false
-	}
-	if len(arg) > 2 {
-		return false
-	}
-	return strings.ContainsRune("BbcEeFIJilmOoPpQRSWw", rune(arg[1]))
-}
-
 func displayAlias(destination string) string {
 	alias := strings.TrimSpace(destination)
+	if len(alias) >= 6 && strings.EqualFold(alias[:6], "ssh://") {
+		alias = alias[6:]
+	}
 	if at := strings.LastIndex(alias, "@"); at >= 0 && at < len(alias)-1 {
 		alias = alias[at+1:]
 	}
@@ -176,6 +177,59 @@ func displayAlias(destination string) string {
 		return alias[:colon]
 	}
 	return alias
+}
+
+func splitWindowsCommandLine(command string) []string {
+	fields := make([]string, 0)
+	var current strings.Builder
+	inQuotes := false
+	tokenStarted := false
+
+	flush := func() {
+		if tokenStarted {
+			fields = append(fields, current.String())
+			current.Reset()
+			tokenStarted = false
+		}
+	}
+
+	for i := 0; i < len(command); {
+		ch := command[i]
+		if !inQuotes && (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+			flush()
+			i++
+			continue
+		}
+		tokenStarted = true
+		if ch == '\\' {
+			slashes := 0
+			for i < len(command) && command[i] == '\\' {
+				slashes++
+				i++
+			}
+			if i < len(command) && command[i] == '"' {
+				current.WriteString(strings.Repeat("\\", slashes/2))
+				if slashes%2 == 1 {
+					current.WriteByte('"')
+				} else {
+					inQuotes = !inQuotes
+				}
+				i++
+				continue
+			}
+			current.WriteString(strings.Repeat("\\", slashes))
+			continue
+		}
+		if ch == '"' {
+			inQuotes = !inQuotes
+			i++
+			continue
+		}
+		current.WriteByte(ch)
+		i++
+	}
+	flush()
+	return fields
 }
 
 func splitCommandLine(command string) []string {

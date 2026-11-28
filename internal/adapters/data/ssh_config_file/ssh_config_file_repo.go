@@ -174,16 +174,26 @@ func (r *Repository) UpdateServer(server domain.Server, newServer domain.Server)
 
 	if server.Alias != newServer.Alias {
 		newPatterns := make([]*ssh_config.Pattern, 0, len(host.Patterns))
+		seenNewAlias := false
 		for _, pattern := range host.Patterns {
-			if normalizeHostAlias(pattern.String()) == server.Alias {
-				newPatterns = append(newPatterns, &ssh_config.Pattern{Str: newServer.Alias})
-			} else {
-				newPatterns = append(newPatterns, pattern)
+			normalized := normalizeHostAlias(pattern.String())
+			if normalized == server.Alias {
+				if !seenNewAlias {
+					newPatterns = append(newPatterns, &ssh_config.Pattern{Str: newServer.Alias})
+					seenNewAlias = true
+				}
+				continue
 			}
+			if normalized == newServer.Alias {
+				if seenNewAlias {
+					continue
+				}
+				seenNewAlias = true
+			}
+			newPatterns = append(newPatterns, pattern)
 		}
 
 		host.Patterns = newPatterns
-
 	}
 
 	r.updateHostNodes(host, newServer)
@@ -211,10 +221,10 @@ func (r *Repository) DeleteServer(server domain.Server) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	initialCount := len(cfg.Hosts)
-	cfg.Hosts = r.removeHostByAlias(cfg.Hosts, server.Alias)
+	var removed bool
+	cfg.Hosts, removed = r.removeHostByAlias(cfg.Hosts, server.Alias)
 
-	if len(cfg.Hosts) == initialCount {
+	if !removed {
 		return fmt.Errorf("server with alias '%s' not found", server.Alias)
 	}
 
@@ -243,6 +253,9 @@ func (r *Repository) UpdateTags(server domain.Server, tags []string) error {
 
 // RecordSSH increments the SSH access count and updates the last seen timestamp for a server.
 func (r *Repository) RecordSSH(alias string) error {
+	if existing, found, err := r.findLoadedServerByAlias(alias, nil); err == nil && found {
+		alias = existing.Alias
+	}
 	return r.metadataManager.recordSSH(alias)
 }
 

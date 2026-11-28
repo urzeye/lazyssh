@@ -15,6 +15,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -34,12 +35,15 @@ func TestPingUsesSelectedSSHConfig(t *testing.T) {
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
 	svc := NewServerService(zap.NewNop().Sugar(), mockServerRepository{}).(*serverService)
-	svc.sshCommand = func(args ...string) *exec.Cmd {
-		want := []string{"-G", "-F", "/tmp/test-config", "example"}
+	svc.sshCommandContext = func(ctx context.Context, args ...string) *exec.Cmd {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("Ping ssh -G command missing timeout context")
+		}
+		want := []string{"-G", "-F", "/tmp/test-config", "--", "example"}
 		if !slices.Equal(args, want) {
 			t.Fatalf("ssh args = %q, want %q", args, want)
 		}
-		cmd := exec.Command(os.Args[0], "-test.run=^TestSSHSessionHelper$")
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSSHSessionHelper$")
 		cmd.Env = append(os.Environ(), "LAZYSSH_TEST_SESSION_HELPER=resolve", fmt.Sprintf("LAZYSSH_TEST_PORT=%d", port))
 		return cmd
 	}

@@ -44,27 +44,32 @@ const (
 )
 
 type ServerForm struct {
-	*tview.Flex               // The root container (includes header, form panel and hint bar)
-	header        *AppHeader  // The app header
-	formPanel     *tview.Flex // The actual form panel
-	pages         *tview.Pages
-	tabBar        *tview.TextView
-	forms         map[string]*tview.Form
-	currentTab    string
-	tabs          []string
-	tabAbbrev     map[string]string // Abbreviated tab names for narrow views
-	mode          ServerFormMode
-	original      *domain.Server
-	onSave        func(domain.Server, *domain.Server)
-	onCancel      func()
-	app           *tview.Application // Reference to app for showing modals
-	version       string             // Version for header
-	commit        string             // Commit for header
-	validation    *ValidationState   // Validation state for all fields
-	helpPanel     *tview.TextView    // Help panel for field descriptions
-	helpMode      HelpDisplayMode    // Current help display mode
-	currentField  string             // Currently focused field
-	mainContainer *tview.Flex        // Container for form and help panel
+	*tview.Flex                    // The root container (includes header, form panel and hint bar)
+	header             *AppHeader  // The app header
+	formPanel          *tview.Flex // The actual form panel
+	pages              *tview.Pages
+	tabBar             *tview.TextView
+	forms              map[string]*tview.Form
+	currentTab         string
+	tabs               []string
+	tabAbbrev          map[string]string // Abbreviated tab names for narrow views
+	mode               ServerFormMode
+	original           *domain.Server
+	onSave             func(domain.Server, *domain.Server)
+	onCancel           func()
+	app                *tview.Application // Reference to app for showing modals
+	version            string             // Version for header
+	commit             string             // Commit for header
+	validation         *ValidationState   // Validation state for all fields
+	helpPanel          *tview.TextView    // Help panel for field descriptions
+	helpMode           HelpDisplayMode    // Current help display mode
+	currentField       string             // Currently focused field
+	mainContainer      *tview.Flex        // Container for form and help panel
+	lastLayoutWidth    int                // Last width used to build responsive form/help layout
+	lastLayoutHelpMode HelpDisplayMode    // Last help mode used to build layout
+	lastHelpWidth      int                // Last width used to render help panel
+	lastTabBarWidth    int                // Last width used to render tab bar
+	lastTabBarTab      string             // Last active tab rendered in tab bar
 }
 
 func NewServerForm(mode ServerFormMode, original *domain.Server) *ServerForm {
@@ -141,11 +146,18 @@ func (sf *ServerForm) build() {
 	sf.mainContainer.Clear()
 
 	// Responsive layout: hide help panel if window is too narrow
+	sf.lastLayoutWidth = -1
 	sf.mainContainer.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		if width == sf.lastLayoutWidth && sf.helpMode == sf.lastLayoutHelpMode {
+			return x, y, width, height
+		}
+		sf.lastLayoutWidth = width
+		sf.lastLayoutHelpMode = sf.helpMode
+
 		// Minimum width for showing help panel
 		minWidthForHelp := 120
 
-		// Clear and rebuild based on width
+		// Clear and rebuild only when width or help mode changes
 		sf.mainContainer.Clear()
 
 		if width < minWidthForHelp || sf.helpMode == HelpModeOff {
@@ -155,11 +167,20 @@ func (sf *ServerForm) build() {
 			// Window wide enough - show both form and help
 			sf.mainContainer.AddItem(sf.formPanel, 0, 3, true)
 			sf.mainContainer.AddItem(sf.helpPanel, 0, 2, false)
-			// Refresh help content to recalculate separator width on resize
-			sf.updateHelp(sf.currentField)
 		}
 
 		return x, y, width, height
+	})
+
+	// Update help separator width after Flex assigns the help panel's real bounds.
+	sf.lastHelpWidth = -1
+	sf.helpPanel.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+		innerX, innerY, innerWidth, innerHeight := sf.helpPanel.GetInnerRect()
+		if innerWidth != sf.lastHelpWidth {
+			sf.lastHelpWidth = innerWidth
+			sf.updateHelp(sf.currentField)
+		}
+		return innerX, innerY, innerWidth, innerHeight
 	})
 
 	// Initial setup
@@ -173,7 +194,7 @@ func (sf *ServerForm) build() {
 	hintBar.SetBackgroundColor(CurrentTheme.StatusBackground)
 	hintBar.SetTextAlign(tview.AlignCenter)
 	hintBar.SetText(
-		keyText("^H/^L") + " Navigate  • " +
+		keyText("^H/^L") + " or " + keyText("^←/^→") + " Tabs  • " +
 			keyText("^S") + " Save  • " +
 			keyText("Esc") + " Cancel",
 	)
@@ -189,12 +210,14 @@ func (sf *ServerForm) build() {
 	// Setup keyboard shortcuts
 	sf.setupKeyboardShortcuts()
 
-	// Set a draw function for the tab bar to update on each draw
-	// This ensures the tab bar updates when the window is resized
+	// Set a draw function for the tab bar to update only when resized or tab changed
+	sf.lastTabBarWidth = -1
 	sf.tabBar.SetDrawFunc(func(screen tcell.Screen, x int, y int, width int, height int) (int, int, int, int) {
-		// Update tab bar if size changed
-		sf.updateTabBar()
-		// Return the original dimensions
+		if width != sf.lastTabBarWidth || sf.currentTab != sf.lastTabBarTab {
+			sf.lastTabBarWidth = width
+			sf.lastTabBarTab = sf.currentTab
+			sf.updateTabBar()
+		}
 		return x, y, width, height
 	})
 }
@@ -526,104 +549,75 @@ func (sf *ServerForm) formatDetailedHelp(help *FieldHelp) string {
 // The help panel is now always visible on the right side
 
 func (sf *ServerForm) setupKeyboardShortcuts() {
-	// Set input capture for the main flex container
-	sf.Flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Help panel is always visible - no toggle needed
-
-		// Check if user is focused on an input field - allow normal key handling
-		if sf.isInputFieldFocused() {
-			return event
-		}
-
-		// Check for Ctrl key combinations with regular keys
-		if event.Key() == tcell.KeyRune && event.Modifiers()&tcell.ModCtrl != 0 {
-			switch event.Rune() {
-			case 'h', 'H', 8: // 8 is ASCII for Ctrl+H (backspace)
-				// Ctrl+H: Previous tab
-				sf.prevTab()
-				return nil
-			case 'l', 'L', 12: // 12 is ASCII for Ctrl+L (form feed)
-				// Ctrl+L: Next tab
-				sf.nextTab()
-				return nil
-			case 's', 'S', 19: // 19 is ASCII for Ctrl+S
-				// Ctrl+S: Save
-				sf.handleSave()
-				return nil
-			}
-		}
-
-		// Handle special keys
-		//nolint:exhaustive // We only handle specific keys and pass through others
-		switch event.Key() {
-		case tcell.KeyCtrlS:
-			// Ctrl+S: Save (backup handler)
-			sf.handleSave()
-			return nil
-		case tcell.KeyEscape:
-			// ESC: Cancel
-			sf.handleCancel()
-			return nil
-		case tcell.KeyCtrlH:
-			// Ctrl+H: Previous tab (backup handler)
-			sf.prevTab()
-			return nil
-		case tcell.KeyCtrlL:
-			// Ctrl+L: Next tab (backup handler)
-			sf.nextTab()
-			return nil
-		default:
-			// Pass through all other keys
-		}
-
-		return event
-	})
+	sf.Flex.SetInputCapture(sf.handleFormShortcut)
 }
 
 // setupFormShortcuts sets up keyboard shortcuts for a form
 func (sf *ServerForm) setupFormShortcuts(form *tview.Form) {
-	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Check if user is focused on an input field - allow normal key handling
-		if sf.isInputFieldFocused() {
-			return event
-		}
+	form.SetCancelFunc(sf.handleCancel)
+	form.SetInputCapture(sf.handleFormShortcut)
+}
 
-		// Check for Ctrl key combinations
-		if event.Key() == tcell.KeyRune && event.Modifiers()&tcell.ModCtrl != 0 {
-			switch event.Rune() {
-			case 'h', 'H', 8: // Ctrl+H: Previous tab
-				sf.prevTab()
-				return nil
-			case 'l', 'L', 12: // Ctrl+L: Next tab
-				sf.nextTab()
-				return nil
-			case 's', 'S', 19: // Ctrl+S: Save
-				sf.handleSave()
-				return nil
+func (sf *ServerForm) handleFormShortcut(event *tcell.EventKey) *tcell.EventKey {
+	inInput := sf.isInputFieldFocused()
+
+	// Check for Ctrl key combinations with regular keys
+	if event.Key() == tcell.KeyRune && event.Modifiers()&tcell.ModCtrl != 0 {
+		switch event.Rune() {
+		case 'h', 'H', 8: // 8 is ASCII for Ctrl+H (also sent by Backspace in many terminals)
+			if inInput {
+				return event
 			}
-		}
-
-		// Handle special keys
-		//nolint:exhaustive // We only handle specific keys and pass through others
-		switch event.Key() {
-		case tcell.KeyEscape:
-			sf.handleCancel()
-			return nil
-		case tcell.KeyCtrlH:
 			sf.prevTab()
 			return nil
-		case tcell.KeyCtrlL:
+		case 'l', 'L', 12: // 12 is ASCII for Ctrl+L (form feed)
 			sf.nextTab()
 			return nil
-		case tcell.KeyCtrlS:
+		case 's', 'S', 19: // 19 is ASCII for Ctrl+S
 			sf.handleSave()
 			return nil
-		default:
-			// Pass through all other keys
 		}
+	}
 
-		return event
-	})
+	// Handle special keys
+	//nolint:exhaustive // We only handle specific keys and pass through others
+	switch event.Key() {
+	case tcell.KeyCtrlS:
+		sf.handleSave()
+		return nil
+	case tcell.KeyEscape:
+		// Let the active form handle Escape so open DropDowns and InputField
+		// autocompletes close first; form.SetCancelFunc triggers handleCancel
+		// when no popup consumes it. Fall back when focus is outside the form.
+		if activeForm, ok := sf.forms[sf.currentTab]; ok && activeForm != nil && activeForm.HasFocus() {
+			return event
+		}
+		sf.handleCancel()
+		return nil
+	case tcell.KeyCtrlH:
+		// Allow Backspace/Ctrl+H to delete characters inside text inputs.
+		if inInput {
+			return event
+		}
+		sf.prevTab()
+		return nil
+	case tcell.KeyCtrlL:
+		sf.nextTab()
+		return nil
+	case tcell.KeyLeft:
+		if event.Modifiers()&tcell.ModCtrl != 0 {
+			sf.prevTab()
+			return nil
+		}
+	case tcell.KeyRight:
+		if event.Modifiers()&tcell.ModCtrl != 0 {
+			sf.nextTab()
+			return nil
+		}
+	default:
+	}
+
+	return event
 }
 
 // isInputFieldFocused checks if the current focus is on an input field
@@ -1099,11 +1093,15 @@ func (sf *ServerForm) validateAllFields() bool {
 // getDefaultValues returns default form values based on mode
 func (sf *ServerForm) getDefaultValues() ServerFormData {
 	if sf.original != nil {
+		portText := ""
+		if sf.original.Port > 0 {
+			portText = fmt.Sprint(sf.original.Port)
+		}
 		return ServerFormData{
 			Alias:                sf.original.Alias,
 			Host:                 sf.original.Host,
 			User:                 sf.original.User,
-			Port:                 fmt.Sprint(sf.original.Port),
+			Port:                 portText,
 			Key:                  strings.Join(sf.original.IdentityFiles, ", "),
 			Tags:                 strings.Join(sf.original.Tags, ", "),
 			ProxyJump:            sf.original.ProxyJump,
@@ -1334,8 +1332,21 @@ func (sf *ServerForm) createConnectionForm() {
 	form.AddTextView("\n[yellow]▶ Bind Options[-]", "", 0, 1, true, false)
 	sf.addValidatedInputField(form, "BindAddress:", "BindAddress", defaultValues.BindAddress, 40, GetFieldPlaceholder("BindAddress"))
 
-	// BindInterface dropdown with available network interfaces
+	// BindInterface dropdown with available network interfaces.
+	// Keep any prefilled/imported interface even if it is not currently active locally.
 	interfaceOptions := append([]string{""}, GetNetworkInterfaces()...)
+	if defaultValues.BindInterface != "" {
+		found := false
+		for _, opt := range interfaceOptions {
+			if strings.EqualFold(opt, defaultValues.BindInterface) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			interfaceOptions = append(interfaceOptions, defaultValues.BindInterface)
+		}
+	}
 	bindInterfaceIndex := sf.findOptionIndex(interfaceOptions, defaultValues.BindInterface)
 	sf.addDropDownWithHelp(form, "BindInterface:", "BindInterface", interfaceOptions, bindInterfaceIndex)
 
@@ -1781,7 +1792,7 @@ func (sf *ServerForm) getFormData() ServerFormData {
 					// Strip color tags from label for comparison
 					// Labels can be: "Port:", "[red]Port:[-]", "[green]Port:[-]"
 					cleanLabel := stripColorTags(label)
-					if strings.HasPrefix(cleanLabel, fieldName) {
+					if cleanLabel == fieldName {
 						return strings.TrimSpace(field.GetText())
 					}
 				}
@@ -1798,7 +1809,7 @@ func (sf *ServerForm) getFormData() ServerFormData {
 					label := strings.TrimSpace(dropdown.GetLabel())
 					// Strip color tags from label for comparison
 					cleanLabel := stripColorTags(label)
-					if strings.HasPrefix(cleanLabel, fieldName) {
+					if cleanLabel == fieldName {
 						_, text := dropdown.GetCurrentOption()
 						// Parse the option value to handle "default (value)" format
 						return parseOptionValue(text)
@@ -1962,7 +1973,7 @@ func (sf *ServerForm) handleSave() bool {
 
 				// Use tview's built-in Modal
 				modal := tview.NewModal().
-					SetText(errorMsg).
+					SetText(tview.Escape(errorMsg)).
 					AddButtons([]string{"OK"}).
 					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 						sf.app.SetRoot(sf.Flex, true)
@@ -2002,18 +2013,14 @@ func (sf *ServerForm) handleCancel() {
 				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 					switch buttonIndex {
 					case 0: // Save
-						// Try to save, if successful it will exit
-						if sf.handleSave() {
-							// Save successful, modal will be replaced by onSave callback
-						} else {
-							// Validation failed, return to form
-							sf.app.SetRoot(sf.Flex, true)
-						}
+						// handleSave displays its own validation error modal on failure
+						// or invokes onSave on success.
+						sf.handleSave()
 					case 1: // Discard
 						if sf.onCancel != nil {
 							sf.onCancel()
 						}
-					case 2: // Cancel
+					default: // Cancel button (2) or Escape (-1)
 						// Restore the form view
 						sf.app.SetRoot(sf.Flex, true)
 					}
@@ -2023,12 +2030,7 @@ func (sf *ServerForm) handleCancel() {
 			modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 				switch event.Rune() {
 				case 's', 'S':
-					if sf.handleSave() {
-						// Save successful
-					} else {
-						// Validation failed, return to form
-						sf.app.SetRoot(sf.Flex, true)
-					}
+					sf.handleSave()
 					return nil
 				case 'd', 'D':
 					if sf.onCancel != nil {
@@ -2089,12 +2091,14 @@ func (sf *ServerForm) serversDiffer(a, b domain.Server) bool {
 	valB := reflect.ValueOf(b)
 	typeA := valA.Type()
 
-	// Fields to skip during comparison (lazyssh metadata fields)
+	// Fields to skip during comparison (lazyssh metadata/source fields)
 	skipFields := map[string]bool{
-		"Aliases":  true, // Computed field
-		"LastSeen": true, // Metadata field
-		"PinnedAt": true, // Metadata field
-		"SSHCount": true, // Metadata field
+		"Aliases":    true, // Computed field
+		"SourceFile": true, // Origin metadata
+		"Readonly":   true, // Origin metadata
+		"LastSeen":   true, // Metadata field
+		"PinnedAt":   true, // Metadata field
+		"SSHCount":   true, // Metadata field
 	}
 
 	// Iterate through all fields

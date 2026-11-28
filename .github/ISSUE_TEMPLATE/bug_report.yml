@@ -13,7 +13,7 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I have searched the [existing issues](https://github.com/adembc/lazyssh/issues).
+        - label: I have searched the [existing issues](https://github.com/urzeye/lazyssh/issues).
           required: true
 
 
@@ -21,7 +21,7 @@ body:
     id: lazyssh-version
     attributes:
       label: LazySSH Version
-      placeholder: v2026.6.4
+      placeholder: v2026.11.18
     validations:
       required: true
 

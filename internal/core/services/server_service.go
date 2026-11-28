@@ -16,6 +16,7 @@ package services
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -34,11 +35,19 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	aliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	hostPattern  = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+)
+
+const pingResolveTimeout = 3 * time.Second
+
 type serverService struct {
-	serverRepository ports.ServerRepository
-	logger           *zap.SugaredLogger
-	sshCommand       func(args ...string) *exec.Cmd
-	sftpCommand      func(args ...string) *exec.Cmd
+	serverRepository  ports.ServerRepository
+	logger            *zap.SugaredLogger
+	sshCommand        func(args ...string) *exec.Cmd
+	sshCommandContext func(ctx context.Context, args ...string) *exec.Cmd
+	sftpCommand       func(args ...string) *exec.Cmd
 
 	fwMu     sync.Mutex
 	forwards map[string][]*os.Process
@@ -52,6 +61,10 @@ func NewServerService(logger *zap.SugaredLogger, sr ports.ServerRepository) port
 		sshCommand: func(args ...string) *exec.Cmd {
 			// #nosec G204 -- arguments are passed directly to the system OpenSSH client.
 			return exec.Command("ssh", args...)
+		},
+		sshCommandContext: func(ctx context.Context, args ...string) *exec.Cmd {
+			// #nosec G204 -- arguments are passed directly to the system OpenSSH client.
+			return exec.CommandContext(ctx, "ssh", args...)
 		},
 		sftpCommand: func(args ...string) *exec.Cmd {
 			// #nosec G204 -- arguments are passed directly to the system SFTP client.
@@ -245,7 +258,10 @@ func validateServer(srv domain.Server) error {
 	if strings.TrimSpace(srv.Alias) == "" {
 		return fmt.Errorf("alias is required")
 	}
-	if ok, _ := regexp.MatchString(`^[A-Za-z0-9_.-]+$`, srv.Alias); !ok {
+	if strings.HasPrefix(srv.Alias, "-") {
+		return fmt.Errorf("alias must not start with a hyphen")
+	}
+	if !aliasPattern.MatchString(srv.Alias) {
 		return fmt.Errorf("alias may contain letters, digits, dot, dash, underscore")
 	}
 	if strings.TrimSpace(srv.Host) == "" {
@@ -255,7 +271,7 @@ func validateServer(srv domain.Server) error {
 		if strings.Contains(srv.Host, " ") {
 			return fmt.Errorf("host must not contain spaces")
 		}
-		if ok, _ := regexp.MatchString(`^[A-Za-z0-9.-]+$`, srv.Host); !ok {
+		if !hostPattern.MatchString(srv.Host) {
 			return fmt.Errorf("host contains invalid characters")
 		}
 		if strings.HasPrefix(srv.Host, ".") || strings.HasSuffix(srv.Host, ".") {
@@ -322,7 +338,11 @@ func (s *serverService) SetPinned(alias string, pinned bool) error {
 
 // UpdateTags persists tags without changing SSH configuration or connection statistics.
 func (s *serverService) UpdateTags(server domain.Server, tags []string) error {
-	return s.serverRepository.UpdateTags(server, tags)
+	err := s.serverRepository.UpdateTags(server, tags)
+	if err != nil {
+		s.logger.Errorw("failed to update tags", "error", err, "alias", server.Alias)
+	}
+	return err
 }
 
 // SSH starts an interactive SSH session to the given alias using the system's ssh client.
@@ -330,7 +350,7 @@ func (s *serverService) SSH(alias string) error {
 	s.logger.Infow("ssh start", "alias", alias)
 	// #nosec G204 -- lazyssh intentionally delegates to the user's local ssh client
 	// using the selected alias and configured SSH config path.
-	cmd := s.sshCommand("-F", s.serverRepository.GetConfigFile(), alias)
+	cmd := s.sshCommand("-F", s.serverRepository.GetConfigFile(), "--", alias)
 	if err := runInteractiveSSH(cmd); err != nil {
 		s.logger.Errorw("ssh command failed", "alias", alias, "error", err)
 		return err
@@ -346,14 +366,20 @@ func (s *serverService) SSH(alias string) error {
 
 // SFTP starts an interactive session using the selected root configuration.
 func (s *serverService) SFTP(alias string) error {
-	return runInteractiveSSH(s.sftpCommand("-F", s.serverRepository.GetConfigFile(), alias))
+	s.logger.Infow("sftp start", "alias", alias)
+	if err := runInteractiveSSH(s.sftpCommand("-F", s.serverRepository.GetConfigFile(), "--", alias)); err != nil {
+		s.logger.Errorw("sftp command failed", "alias", alias, "error", err)
+		return err
+	}
+	s.logger.Infow("sftp end", "alias", alias)
+	return nil
 }
 
 // SSHWithArgs runs system ssh with provided extra args (e.g., -L/-R/-D) for the given alias.
 func (s *serverService) SSHWithArgs(alias string, extraArgs []string) error {
 	s.logger.Infow("ssh start (with args)", "alias", alias, "args", extraArgs)
 	args := append([]string{}, extraArgs...)
-	args = append(args, "-F", s.serverRepository.GetConfigFile(), alias)
+	args = append(args, "-F", s.serverRepository.GetConfigFile(), "--", alias)
 	// #nosec G204
 	cmd := s.sshCommand(args...)
 	if err := runInteractiveSSH(cmd); err != nil {
@@ -375,10 +401,11 @@ func (s *serverService) StartForward(alias string, extraArgs []string) (int, err
 	}
 	s.fwMu.Unlock()
 
-	extraArgs = append(extraArgs, "-F", s.serverRepository.GetConfigFile(), "-N", alias)
+	args := append([]string{}, extraArgs...)
+	args = append(args, "-F", s.serverRepository.GetConfigFile(), "-N", "--", alias)
 
 	// #nosec G204
-	cmd := s.sshCommand(extraArgs...)
+	cmd := s.sshCommand(args...)
 
 	// Detach from TTY: discard stdio
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
@@ -493,12 +520,19 @@ func (s *serverService) GetConfigFile() string {
 
 // Ping checks if the server is reachable on its SSH port.
 func (s *serverService) Ping(server domain.Server) (bool, time.Duration, error) {
-	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), pingResolveTimeout)
+	defer cancel()
 
-	cmd := s.sshCommand("-G", "-F", s.serverRepository.GetConfigFile(), server.Alias)
+	resolveArgs := []string{"-G", "-F", s.serverRepository.GetConfigFile(), "--", server.Alias}
+	var cmd *exec.Cmd
+	if s.sshCommandContext != nil {
+		cmd = s.sshCommandContext(ctx, resolveArgs...)
+	} else {
+		cmd = s.sshCommand(resolveArgs...)
+	}
+
 	host, port, ok := resolveSSHDestination(cmd)
 	if !ok {
-
 		host = strings.TrimSpace(server.Host)
 		if host == "" {
 			host = server.Alias
@@ -511,6 +545,7 @@ func (s *serverService) Ping(server domain.Server) (bool, time.Duration, error) 
 	}
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
+	start := time.Now()
 	dialer := net.Dialer{Timeout: 3 * time.Second}
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {

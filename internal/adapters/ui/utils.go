@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
+	"github.com/rivo/tview"
 	"github.com/urzeye/lazyssh/internal/core/domain"
 )
 
@@ -54,7 +55,7 @@ func renderTagBadgesForList(tags []string) string {
 	}
 	parts := make([]string, 0, len(shown)+1)
 	for _, t := range shown {
-		parts = append(parts, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, t))
+		parts = append(parts, fmt.Sprintf("[%s:%s] %s [-:-:-]", CurrentTheme.TagText, CurrentTheme.TagBack, tview.Escape(t)))
 	}
 	if extra := len(tags) - len(shown); extra > 0 {
 		parts = append(parts, fmt.Sprintf("[%s]+%d[-]", CurrentTheme.DimText, extra))
@@ -111,9 +112,9 @@ func formatServerLine(s domain.Server, maxAliasWidth int) (primary, secondary st
 		"%s [%s::b]%s[-] [%s]%-18s[-] %s [%s]Last SSH: %-8s[-]  %s %s",
 		icon,
 		CurrentTheme.AliasText,
-		paddedAlias,
+		tview.Escape(paddedAlias),
 		CurrentTheme.HostText,
-		s.Host,
+		tview.Escape(s.Host),
 		fCol,
 		CurrentTheme.MetaText,
 		humanizeDuration(s.LastSeen),
@@ -221,6 +222,9 @@ func BuildSSHCommand(s domain.Server) string {
 	default:
 		userHost = s.Alias
 	}
+	if strings.HasPrefix(userHost, "-") {
+		parts = append(parts, "--")
+	}
 	parts = append(parts, userHost)
 
 	return strings.Join(parts, " ")
@@ -233,11 +237,17 @@ func addOption(parts *[]string, key, value string) {
 	}
 }
 
-// addQuotedOption adds an SSH option with quoted value if needed
+// addQuotedOption adds an SSH option with shell quoting when value needs escaping.
 func addQuotedOption(parts *[]string, key, value string) {
-	if value != "" {
-		*parts = append(*parts, "-o", fmt.Sprintf("%s=%s", key, quoteIfNeeded(value)))
+	if value == "" {
+		return
 	}
+	option := fmt.Sprintf("%s=%s", key, value)
+	if needsShellQuoting(value) {
+		*parts = append(*parts, "-o", shellQuote(option))
+		return
+	}
+	*parts = append(*parts, "-o", option)
 }
 
 // addProxyOptions adds proxy-related options to the SSH command
@@ -256,16 +266,16 @@ func addConnectionTimingOptions(parts *[]string, s domain.Server) {
 	addOption(parts, "ConnectTimeout", s.ConnectTimeout)
 	addOption(parts, "ConnectionAttempts", s.ConnectionAttempts)
 	if s.BindAddress != "" {
-		*parts = append(*parts, "-b", s.BindAddress)
+		*parts = append(*parts, "-b", quoteIfNeeded(s.BindAddress))
 	}
 	if s.BindInterface != "" {
-		*parts = append(*parts, "-B", s.BindInterface)
+		*parts = append(*parts, "-B", quoteIfNeeded(s.BindInterface))
 	}
 	addOption(parts, "AddressFamily", s.AddressFamily)
-	addOption(parts, "IPQoS", s.IPQoS)
+	addQuotedOption(parts, "IPQoS", s.IPQoS)
 	// Hostname canonicalization options
 	addOption(parts, "CanonicalizeHostname", s.CanonicalizeHostname)
-	addOption(parts, "CanonicalDomains", s.CanonicalDomains)
+	addQuotedOption(parts, "CanonicalDomains", s.CanonicalDomains)
 	addOption(parts, "CanonicalizeFallbackLocal", s.CanonicalizeFallbackLocal)
 	addOption(parts, "CanonicalizeMaxDots", s.CanonicalizeMaxDots)
 	addQuotedOption(parts, "CanonicalizePermittedCNAMEs", s.CanonicalizePermittedCNAMEs)
@@ -274,19 +284,19 @@ func addConnectionTimingOptions(parts *[]string, s domain.Server) {
 // addPortForwardingOptions adds port forwarding options to the SSH command
 func addPortForwardingOptions(parts *[]string, s domain.Server) {
 	for _, forward := range s.LocalForward {
-		*parts = append(*parts, "-L", forward)
+		*parts = append(*parts, "-L", quoteIfNeeded(forward))
 	}
 	for _, forward := range s.RemoteForward {
-		*parts = append(*parts, "-R", forward)
+		*parts = append(*parts, "-R", quoteIfNeeded(forward))
 	}
 	for _, forward := range s.DynamicForward {
-		*parts = append(*parts, "-D", forward)
+		*parts = append(*parts, "-D", quoteIfNeeded(forward))
 	}
-	if s.ClearAllForwardings == sshYes {
-		*parts = append(*parts, "-o", "ClearAllForwardings=yes")
+	if s.ClearAllForwardings != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("ClearAllForwardings=%s", s.ClearAllForwardings))
 	}
-	if s.ExitOnForwardFailure == sshYes {
-		*parts = append(*parts, "-o", "ExitOnForwardFailure=yes")
+	if s.ExitOnForwardFailure != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("ExitOnForwardFailure=%s", s.ExitOnForwardFailure))
 	}
 	if s.GatewayPorts != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("GatewayPorts=%s", s.GatewayPorts))
@@ -317,7 +327,7 @@ func addAuthOptions(parts *[]string, s domain.Server) {
 		*parts = append(*parts, "-o", fmt.Sprintf("AddKeysToAgent=%s", s.AddKeysToAgent))
 	}
 	if s.IdentityAgent != "" {
-		*parts = append(*parts, "-o", fmt.Sprintf("IdentityAgent=%s", quoteIfNeeded(s.IdentityAgent)))
+		addQuotedOption(parts, "IdentityAgent", s.IdentityAgent)
 	}
 	if s.KbdInteractiveAuthentication != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("KbdInteractiveAuthentication=%s", s.KbdInteractiveAuthentication))
@@ -330,21 +340,26 @@ func addAuthOptions(parts *[]string, s domain.Server) {
 // addForwardingOptions adds agent and X11 forwarding options to the SSH command
 func addForwardingOptions(parts *[]string, s domain.Server) {
 	if s.ForwardAgent != "" {
-		if s.ForwardAgent == sshYes {
+		if strings.EqualFold(s.ForwardAgent, sshYes) {
 			*parts = append(*parts, "-A")
-		} else if s.ForwardAgent == sshNo {
+		} else if strings.EqualFold(s.ForwardAgent, sshNo) {
 			*parts = append(*parts, "-a")
 		}
 	}
-	if s.ForwardX11 != "" {
-		if s.ForwardX11 == sshYes {
-			*parts = append(*parts, "-X")
-		} else if s.ForwardX11 == sshNo {
-			*parts = append(*parts, "-x")
-		}
+	if strings.EqualFold(s.ForwardX11, sshNo) {
+		*parts = append(*parts, "-x")
+		return
 	}
-	if s.ForwardX11Trusted == sshYes {
-		*parts = append(*parts, "-Y")
+	if strings.EqualFold(s.ForwardX11, sshYes) {
+		if strings.EqualFold(s.ForwardX11Trusted, sshYes) {
+			*parts = append(*parts, "-Y")
+			return
+		}
+		*parts = append(*parts, "-X")
+		return
+	}
+	if s.ForwardX11Trusted != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("ForwardX11Trusted=%s", s.ForwardX11Trusted))
 	}
 }
 
@@ -354,7 +369,7 @@ func addMultiplexingOptions(parts *[]string, s domain.Server) {
 		*parts = append(*parts, "-o", fmt.Sprintf("ControlMaster=%s", s.ControlMaster))
 	}
 	if s.ControlPath != "" {
-		*parts = append(*parts, "-o", fmt.Sprintf("ControlPath=%s", quoteIfNeeded(s.ControlPath)))
+		addQuotedOption(parts, "ControlPath", s.ControlPath)
 	}
 	if s.ControlPersist != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("ControlPersist=%s", s.ControlPersist))
@@ -371,35 +386,41 @@ func addConnectionOptions(parts *[]string, s domain.Server) {
 	}
 	if s.Compression == sshYes {
 		*parts = append(*parts, "-C")
+	} else if s.Compression != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("Compression=%s", s.Compression))
 	}
 	if s.TCPKeepAlive != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("TCPKeepAlive=%s", s.TCPKeepAlive))
 	}
-	if s.BatchMode == sshYes {
-		*parts = append(*parts, "-o", "BatchMode=yes")
+	if s.BatchMode != "" {
+		*parts = append(*parts, "-o", fmt.Sprintf("BatchMode=%s", s.BatchMode))
 	}
 }
 
 // addCommandExecutionOptions adds command execution options to the SSH command
 func addCommandExecutionOptions(parts *[]string, s domain.Server) {
 	if s.LocalCommand != "" {
-		*parts = append(*parts, "-o", fmt.Sprintf("LocalCommand=%s", quoteIfNeeded(s.LocalCommand)))
+		addQuotedOption(parts, "LocalCommand", s.LocalCommand)
 	}
 	if s.PermitLocalCommand != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("PermitLocalCommand=%s", s.PermitLocalCommand))
 	}
 	if s.EscapeChar != "" {
-		*parts = append(*parts, "-e", s.EscapeChar)
+		escapeArg := quoteIfNeeded(s.EscapeChar)
+		if strings.HasPrefix(s.EscapeChar, "~") {
+			escapeArg = shellQuote(s.EscapeChar)
+		}
+		*parts = append(*parts, "-e", escapeArg)
 	}
 }
 
 // addEnvironmentOptions adds environment variable options to the SSH command
 func addEnvironmentOptions(parts *[]string, s domain.Server) {
 	for _, env := range s.SendEnv {
-		*parts = append(*parts, "-o", fmt.Sprintf("SendEnv=%s", env))
+		addQuotedOption(parts, "SendEnv", env)
 	}
 	for _, env := range s.SetEnv {
-		*parts = append(*parts, "-o", fmt.Sprintf("SetEnv=%s", quoteIfNeeded(env)))
+		addQuotedOption(parts, "SetEnv", env)
 	}
 }
 
@@ -415,7 +436,7 @@ func addSecurityOptions(parts *[]string, s domain.Server) {
 		*parts = append(*parts, "-o", fmt.Sprintf("FingerprintHash=%s", s.FingerprintHash))
 	}
 	if s.UserKnownHostsFile != "" {
-		*parts = append(*parts, "-o", fmt.Sprintf("UserKnownHostsFile=%s", quoteIfNeeded(s.UserKnownHostsFile)))
+		addQuotedOption(parts, "UserKnownHostsFile", s.UserKnownHostsFile)
 	}
 	if s.HostKeyAlgorithms != "" {
 		*parts = append(*parts, "-o", fmt.Sprintf("HostKeyAlgorithms=%s", s.HostKeyAlgorithms))
@@ -467,14 +488,14 @@ func addTTYAndLoggingOptions(parts *[]string, s domain.Server) {
 		switch strings.ToLower(s.LogLevel) {
 		case "quiet":
 			*parts = append(*parts, "-q")
-		case "verbose":
-			*parts = append(*parts, "-v")
 		case "debug", "debug1":
 			*parts = append(*parts, "-v")
 		case "debug2":
 			*parts = append(*parts, "-vv")
 		case "debug3":
 			*parts = append(*parts, "-vvv")
+		default:
+			*parts = append(*parts, "-o", fmt.Sprintf("LogLevel=%s", s.LogLevel))
 		}
 	}
 
@@ -495,10 +516,14 @@ func addTTYAndLoggingOptions(parts *[]string, s domain.Server) {
 	}
 }
 
-// quoteIfNeeded returns the value quoted if it contains spaces.
+func needsShellQuoting(val string) bool {
+	return strings.ContainsAny(val, " \t\"'`$&;|<>()*?[]{}!#^\\")
+}
+
+// quoteIfNeeded quotes values containing whitespace or shell metacharacters.
 func quoteIfNeeded(val string) string {
-	if strings.ContainsAny(val, " \t") {
-		return fmt.Sprintf("%q", val)
+	if needsShellQuoting(val) {
+		return shellQuote(val)
 	}
 	return val
 }
